@@ -8,6 +8,7 @@
   "memberRoleId": "",
   "memberRoleName": "Member",
   "mutedBotCmdsChannelId": "",
+  "botStatusChannelId": "",
   "doNotType": {
     "channelId": "",
     "action": "alert"

@@ -2,6 +2,7 @@ import { ActivityType, Events } from 'discord.js';
 import { config } from '../config.js';
 import { refreshMutedCmdsNotice } from '../services/install.js';
 import { initScheduler } from '../services/scheduler.js';
+import { refreshStatusMessage, startStatusLoop } from '../services/status.js';
 import { refreshTrapMessage } from '../services/trap.js';
 
 export const name = Events.ClientReady;
@@ -21,4 +22,6 @@ export async function execute(client) {
   await refreshMutedCmdsNotice(client).catch((err) =>
     console.error('[install] Initial muted-commands notice refresh failed:', err.message),
   );
+  await refreshStatusMessage(client).catch((err) => console.error('[status] Initial refresh failed:', err.message));
+  startStatusLoop(client);
 }

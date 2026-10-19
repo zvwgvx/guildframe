@@ -15,6 +15,7 @@ const DEFAULT_FILE_CONFIG = {
   memberRoleId: '',
   memberRoleName: 'Member',
   mutedBotCmdsChannelId: '',
+  botStatusChannelId: '',
   doNotType: { channelId: '', action: 'alert' },
   warnEscalation: { threshold: 0, duration: '1h' },
 };

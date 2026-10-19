@@ -7,6 +7,7 @@ import { deleteInstallMessage, getInstallMessage, listInstallMessages, setInstal
 import { baseEmbed } from '../utils/embeds.js';
 import { applyMuteOverwritesAll, applyMutedCmdsOverwrite, ensureMuteRole } from './mutes.js';
 import { ensureMemberRole } from './roles.js';
+import { STATUS_MESSAGE_KEY, refreshStatusMessage } from './status.js';
 import { TRAP_MESSAGE_KEY, refreshTrapMessage } from './trap.js';
 
 export const MUTED_CMDS_MESSAGE_KEY = 'muted_cmds';
@@ -14,6 +15,7 @@ export const MUTED_CMDS_MESSAGE_KEY = 'muted_cmds';
 export const INSTALL_MESSAGE_LABELS = {
   [TRAP_MESSAGE_KEY]: 'Do-not-type warning message',
   [MUTED_CMDS_MESSAGE_KEY]: 'Muted-commands notice',
+  [STATUS_MESSAGE_KEY]: 'Bot status message',
 };
 
 // ---------- Muted-commands notice ----------
@@ -197,7 +199,39 @@ export async function runInstall(client, guild, { installerId = null } = {}) {
     }
   }
 
-  // 6. Channel restrictions everywhere else
+  // 6. Bot status channel + live status card
+  if (!config.botStatusChannelId) {
+    results.push({
+      label: 'Bot status channel',
+      status: 'Not set',
+      detail: 'Add `botStatusChannelId` to config.json to publish the live status card.',
+    });
+  } else {
+    try {
+      const channel = await guild.channels.fetch(config.botStatusChannelId).catch(() => null);
+      if (!channel || !channel.isTextBased()) {
+        results.push({
+          label: 'Bot status channel',
+          status: 'Failed',
+          detail: 'Channel not found or not text-based. Check `botStatusChannelId`.',
+        });
+      } else {
+        const stored = getInstallMessage(guild.id, STATUS_MESSAGE_KEY);
+        const message = await refreshStatusMessage(client);
+        results.push({
+          label: 'Bot status channel',
+          status: message ? (stored ? 'Updated' : 'Created') : 'Failed',
+          detail: message
+            ? `<#${channel.id}> - status card ${stored ? 'refreshed' : 'posted'} (auto-updates every minute)`
+            : 'Could not post the status card (check permissions).',
+        });
+      }
+    } catch (err) {
+      results.push({ label: 'Bot status channel', status: 'Failed', detail: err.message });
+    }
+  }
+
+  // 7. Channel restrictions everywhere else
   if (muteRole) {
     try {
       const { ok, failed } = await applyMuteOverwritesAll(guild, muteRole);

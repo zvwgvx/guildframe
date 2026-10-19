@@ -21,6 +21,7 @@ Discord moderation bot with **role-based mutes**, **warnings + offence count**, 
 | Do-not-type trap | Any message posted in `doNotType.channelId` is logged with a mod-role ping. Optionally auto-`mute` / `kick` / `ban` the author (never applied to real bot accounts - alert only). A persistent **Warning** sticker with live counter buttons (Caught / Muted / Kicked / Banned) is kept in the channel automatically. |
 | Muted-commands channel | Muted users keep access to `mutedBotCmdsChannelId` so they can still use bot commands there (`=puns` / `/history` on themselves, `=help`). A notice embed is kept in the channel automatically. |
 | Member role | `memberRoleId` (e.g. "Member" / "Verified") is assigned automatically to every human who joins. |
+| Bot status | A live **Status Report** card (Components V2) in `botStatusChannelId`: Bot Status (CPU cores/usage, memory, uptime), Environment (Node.js / discord.js / platform / bot version) and Websocket (ping, shards, state). Refreshed every minute. |
 | Install / Uninstall | `/install` checks every configured role/channel, applies the setup and posts/refreshes the setup messages (overwrites existing ones). `/uninstall` deletes those messages again. |
 
 ## Requirements
@@ -52,6 +53,7 @@ CLIENT_ID=__REDACTED__
   "memberRoleId": "123...",       // Member/Verified role ID (leave empty to auto-create on /install)
   "memberRoleName": "Member",     // name used when the bot creates the member role
   "mutedBotCmdsChannelId": "123...", // channel muted users can still talk in to use commands
+  "botStatusChannelId": "123...", // channel receiving the live "Status Report" card
   "doNotType": {
     "channelId": "123...",        // the "do not type here" channel
     "action": "alert"             // alert | mute | kick | ban
@@ -100,7 +102,7 @@ npm start
 /install
 ```
 
-Checks every configured role/channel, creates the Muted / Member roles if missing, applies the channel restrictions, posts the setup messages (the Warning sticker in the do-not-type channel and the notice in the muted-commands channel) and prints a summary embed. Re-running it overwrites/refreshes everything. `/uninstall` deletes the setup messages again.
+Checks every configured role/channel, creates the Muted / Member roles if missing, applies the channel restrictions, posts the setup messages (the Warning sticker in the do-not-type channel, the notice in the muted-commands channel and the live Status Report card in the bot-status channel) and prints a summary embed. Re-running it overwrites/refreshes everything. `/uninstall` deletes the setup messages again.
 
 ## Commands
 
@@ -186,6 +188,12 @@ Note: inside the muted-commands channel, muted users can run `/history` / `/puni
 - Below it, counter buttons track `Caught`, `Muted`, `Kicked`, `Banned` (counters persist in the database; action buttons appear once used). No emoji anywhere in the UI.
 - Every caught message is logged to the mod log channel with the author, content preview and a jump link.
 
+### Bot status channel
+
+- The bot keeps a **Status Report** card (Components V2, `[ • ]` section style, no emoji) in `botStatusChannelId` and edits it every minute:
+  `Bot Status` (CPU cores/usage, Mem Max, Mem Use, Uptime) - `Environment` (Node JS, Discord JS, Platform, Bot version) - `Websocket` (Ping, Shards, State).
+- Posted/refreshed by `/install`, restored on startup, removed by `/uninstall`. Keeping only these three sections is intentional (no queue/arena/plugin noise).
+
 ## Project structure
 
 ```
@@ -207,6 +215,7 @@ src/
 │   ├── mutes.js          # Muted role + overwrites + assign/remove
 │   ├── roles.js          # Member/verified role (auto-created, assigned on join)
 │   ├── install.js        # /install + /uninstall (setup checks, setup messages)
+│   ├── status.js         # bot status card (Bot Status / Environment / Websocket)
 │   ├── trap.js           # do-not-type Warning message + counters
 │   ├── scheduler.js      # temp mute/ban timers (restored on boot)
 │   ├── escalation.js     # auto-mute on warning threshold
