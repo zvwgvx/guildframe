@@ -105,42 +105,59 @@ export async function runInstall(client, guild, { installerId = null } = {}) {
     });
   }
 
-  // 1. Bot role (visible bot identity - sits below Member and carries no permissions)
+  // Whether the bot already runs as Administrator (needed to create/edit the admin perms role).
+  const meIsAdmin = Boolean(guild.members.me?.permissions.has(PermissionsBitField.Flags.Administrator));
+
+  // 1. Bot role (visible bot identity - sits below Member, stripped of every permission)
   try {
     const existing = await findRole(guild, config.botRoleId, config.botRoleName);
     botRole = await ensureBotRole(guild, { reason: by });
+    const strip = {};
+    if (meIsAdmin && botRole.permissions.toArray().length) {
+      strip.permissions = [];
+    }
+    if (botRole.hoist) {
+      strip.hoist = false; // keeps the bot out of its own sidebar group, below Member
+    }
+    if (Object.keys(strip).length) {
+      await botRole.edit({ ...strip, reason: by }).catch(() => {});
+    }
     results.push({
       label: 'Bot role',
       status: existing ? 'OK' : 'Created',
-      detail: `<@&${botRole.id}> - visible bot role, placed below Member and carries no permissions itself (the powers live in the hidden perms role).`,
+      detail: `<@&${botRole.id}> - visible bot role below Member; permissions removed (the bot runs as Administrator via the hidden perms role).`,
     });
   } catch (err) {
     results.push({ label: 'Bot role', status: 'Failed', detail: err.message });
   }
 
-  // 2. Hidden perms role (carries the bot's actual powers; does not display separately)
+  // 2. Hidden perms role (Administrator only, not hoisted - its list position no longer matters)
   try {
     const existing = await findRole(guild, config.botPermsRoleId, config.botPermsRoleName);
     permsRole = await ensureBotPermsRole(guild, { reason: by });
-    const assigned =
-      existing
-        ? false
-        : await guild.members.me.roles
-            .add(permsRole, by)
-            .then(() => true)
-            .catch(() => false);
+    // Upgrade an older perms role to Administrator (only possible once the bot itself is admin).
+    if (meIsAdmin && !permsRole.permissions.has(PermissionsBitField.Flags.Administrator)) {
+      await permsRole
+        .edit({ permissions: [PermissionsBitField.Flags.Administrator], reason: by })
+        .catch(() => {});
+    }
+    if (!existing) {
+      await guild.members.me.roles.add(permsRole, by).catch(() => {});
+    }
     if (botRole) {
       await guild.members.me.roles.add(botRole, by).catch(() => {});
     }
     results.push({
       label: 'Bot perms role',
       status: existing ? 'OK' : 'Created',
-      detail: `<@&${permsRole.id}> - hidden role with the bot's powers${
-        assigned ? ', assigned to the bot' : ' - assign it to the bot'
-      }. It does not show in member profiles; keep it above Member / Bots / Muted in the role list so the bot can grant and revoke those roles.`,
+      detail: `<@&${permsRole.id}> - hidden role carrying **Administrator** (not shown in member profiles). Assign it to the bot if it has not been; with Administrator the bot ignores role positions, so this role can stay at the bottom of the list.`,
     });
   } catch (err) {
-    results.push({ label: 'Bot perms role', status: 'Failed', detail: err.message });
+    results.push({
+      label: 'Bot perms role',
+      status: 'Failed',
+      detail: `${err.message} - re-invite the bot with Administrator (invite link in the README) and run this again.`,
+    });
   }
 
   // 2. Bots role (shared role for bot accounts)
@@ -162,14 +179,20 @@ export async function runInstall(client, guild, { installerId = null } = {}) {
     results.push({ label: 'Bots role', status: 'Failed', detail: err.message });
   }
 
-  // 3. Muted role
+  // 3. Muted role (above Member, but kept visually invisible: no colour, not hoisted)
   try {
     const existing = await findRole(guild, config.muteRoleId, config.muteRoleName);
     muteRole = await ensureMuteRole(guild, { reason: by });
+    const polish = {};
+    if (muteRole.color) polish.color = null; // usernames keep their default (black) colour
+    if (muteRole.hoist) polish.hoist = false;
+    if (Object.keys(polish).length) {
+      await muteRole.edit({ ...polish, reason: by }).catch(() => {});
+    }
     results.push({
       label: 'Muted role',
       status: existing ? 'OK' : 'Created',
-      detail: `<@&${muteRole.id}> - can still view channels but cannot chat (enforced by channel overwrites)`,
+      detail: `<@&${muteRole.id}> - positioned above Member, but with no colour and never shown separately (muted usernames stay their default colour); chatting is denied via channel overwrites`,
     });
   } catch (err) {
     results.push({ label: 'Muted role', status: 'Failed', detail: err.message });
@@ -332,11 +355,10 @@ export async function runInstall(client, guild, { installerId = null } = {}) {
     }
   }
 
-  // 10. Best-effort ordering (top to bottom): perms (hidden) > member > bots > bot > muted.
-  // BOT roles (and the punishment role) must sit below Member; the hidden perms role stays on
-  // top so the bot can grant/revoke every role below it.
+  // 10. Best-effort ordering (top to bottom): muted > member > bots > bot (visible) > perms (hidden).
+  // With Administrator the bot ignores role positions, so the perms role can rest at the very bottom.
   if (permsRole && memberRole && botsRole && botRole && muteRole) {
-    const desired = [permsRole, memberRole, botsRole, botRole, muteRole];
+    const desired = [muteRole, memberRole, botsRole, botRole, permsRole];
     for (let i = 1; i < desired.length; i++) {
       try {
         if (desired[i].position >= desired[i - 1].position) {

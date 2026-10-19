@@ -19,7 +19,7 @@ export async function ensureMuteRole(guild, { createIfMissing = true, reason = '
   if (!role) {
     role = await guild.roles.create({
       name: config.muteRoleName,
-      color: 0x95a5a6,
+      color: null, // no colour - muted usernames keep their default (black) colour
       hoist: false,
       mentionable: false,
       permissions: [],

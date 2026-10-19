@@ -12,19 +12,9 @@ const MEMBER_PERMISSIONS = [
   PermissionsBitField.Flags.ReadMessageHistory,
 ];
 
-// The hidden role that carries all of the bot's powers (subset of the invite permissions
-// so role creation never gets rejected).
-const BOT_PERMISSIONS = [
-  PermissionsBitField.Flags.ViewChannel,
-  PermissionsBitField.Flags.SendMessages,
-  PermissionsBitField.Flags.EmbedLinks,
-  PermissionsBitField.Flags.ReadMessageHistory,
-  PermissionsBitField.Flags.ManageMessages,
-  PermissionsBitField.Flags.ManageRoles,
-  PermissionsBitField.Flags.KickMembers,
-  PermissionsBitField.Flags.BanMembers,
-  PermissionsBitField.Flags.ViewAuditLog,
-];
+// The hidden role that carries the bot's powers. With Administrator the bot bypasses the
+// role-hierarchy checks, so this role's position in the list no longer matters.
+const BOT_PERMISSIONS = [PermissionsBitField.Flags.Administrator];
 
 const NO_PERMISSIONS = [];
 
