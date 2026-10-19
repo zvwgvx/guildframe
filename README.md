@@ -1,6 +1,8 @@
-# AIO Discord Bot
+# Atrium
 
-All-in-one Discord bot: **moderation** (role-based mutes, warnings + offence count, punishment history, mod log / audit log), a **do-not-type channel trap** to catch bots/selfbots, **tickets**, **dynamic voice rooms**, **welcome cards** and **live server stats** cards.
+**Atrium** - the all-in-one Discord bot. An atrium is the grand entrance hall of a building: guests are welcomed there, rooms branch off it and the staff keep it in order - which is exactly what this bot does for a server.
+
+Moderation (role-based mutes, warnings + offence count, punishment history, mod log / audit log), a do-not-type channel trap to catch bots/selfbots, tickets, dynamic voice rooms, welcome cards and live server stats cards.
 
 - **Stack:** Node.js + discord.js v14
 - **Database:** SQLite via the built-in `node:sqlite` module (no native modules, no DB server)
