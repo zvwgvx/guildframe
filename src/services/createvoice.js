@@ -6,8 +6,11 @@ import {
   ButtonBuilder,
   ButtonStyle,
   ChannelType,
+  ModalBuilder,
   PermissionsBitField,
   StringSelectMenuBuilder,
+  TextInputBuilder,
+  TextInputStyle,
   UserSelectMenuBuilder,
 } from 'discord.js';
 import { config } from '../config.js';
@@ -15,6 +18,7 @@ import { COLORS } from '../constants.js';
 import {
   createVoiceRow,
   deleteVoiceRow,
+  getNextVoiceNumber,
   getVoiceRowByChannel,
   getVoiceRowByOwner,
   setVoiceOwner,
@@ -24,8 +28,12 @@ import { baseEmbed } from '../utils/embeds.js';
 import { isTicketStaff } from './tickets.js';
 
 export const CV_PRIVACY_ID = 'cv_privacy';
+export const CV_RENAME_ID = 'cv_rename';
+export const CV_RENAME_MODAL_ID = 'cv_rename_modal';
+export const CV_RENAME_INPUT_ID = 'cv_name';
 export const CV_LIMIT_ID = 'cv_limit';
 export const CV_INVITE_ID = 'cv_invite';
+export const CV_KICK_ID = 'cv_kick';
 
 // Invited members may see, join and use the voice chat. Speak is intentionally
 // not force-allowed so a server-wide mute stays effective.
@@ -40,7 +48,7 @@ const LIMIT_OPTIONS = [0, 2, 3, 4, 5, 6, 8, 10];
 
 const limitLabel = (limit) => (limit ? `${limit} users` : 'Unlimited');
 
-const sanitizeVoiceName = (username) =>
+const baseVoiceName = (username) =>
   `${String(username).replace(/[`\\]/g, '').trim().slice(0, 88) || 'member'}'s VC`;
 
 // The owner (creator) of the channel or staff may use the settings panel.
@@ -72,7 +80,11 @@ function buildVoicePanelEmbed(channel, row) {
 }
 
 function buildVoicePanelRows(channel) {
-  const privacy = new ActionRowBuilder().addComponents(
+  const actions = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(CV_RENAME_ID)
+      .setLabel('Rename Room')
+      .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId(CV_PRIVACY_ID)
       .setLabel(isPrivateVoice(channel) ? 'Set Public' : 'Set Private')
@@ -96,7 +108,11 @@ function buildVoicePanelRows(channel) {
     new UserSelectMenuBuilder().setCustomId(CV_INVITE_ID).setPlaceholder('Invite a member').setMaxValues(5),
   );
 
-  return [privacy, limit, invite];
+  const kick = new ActionRowBuilder().addComponents(
+    new UserSelectMenuBuilder().setCustomId(CV_KICK_ID).setPlaceholder('Remove a member').setMaxValues(5),
+  );
+
+  return [actions, limit, invite, kick];
 }
 
 export const buildVoicePanelPayload = (channel, row) => ({
@@ -138,10 +154,13 @@ export async function handleVoiceJoin(oldState, newState) {
 
   if (!guild.members.me.permissions.has(PermissionsBitField.Flags.ManageChannels)) return;
 
+  // Room name follows the member plus a per-guild sequence number.
+  const sequence = String(getNextVoiceNumber(guild.id)).padStart(2, '0');
+
   let channel;
   try {
     channel = await guild.channels.create({
-      name: sanitizeVoiceName(member.user.username),
+      name: `${baseVoiceName(member.user.username)} · ${sequence}`.slice(0, 100),
       type: ChannelType.GuildVoice,
       parent: newState.channel?.parentId ?? undefined,
       reason: `Create-voice joined by ${member.id}`,
@@ -151,7 +170,12 @@ export async function handleVoiceJoin(oldState, newState) {
     return;
   }
 
-  const row = createVoiceRow({ guildId: guild.id, channelId: channel.id, ownerId: member.id });
+  // The owner keeps explicit access, required again in private mode.
+  await channel.permissionOverwrites
+    .edit(member.id, { allow: VOICE_MEMBER_ALLOW }, { reason: `Voice channel owner: ${member.id}` })
+    .catch(() => {});
+
+  const row = createVoiceRow({ guildId: guild.id, channelId: channel.id, ownerId: member.id, number: Number(sequence) });
 
   const moved = await member.voice.setChannel(channel, 'Moved to personal voice channel').catch(() => null);
   if (!moved) {
@@ -218,6 +242,10 @@ export async function toggleVoicePrivacy(interaction) {
         { deny: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.Connect] },
         { reason: `Privacy set to private by ${interaction.member.id}` },
       );
+      // The owner must keep access, also when reconnecting later.
+      await channel.permissionOverwrites
+        .edit(row.owner_id, { allow: VOICE_MEMBER_ALLOW }, { reason: `Voice channel owner: ${row.owner_id}` })
+        .catch(() => {});
     }
   } catch (err) {
     return { error: `Could not update the channel permissions: ${err.message}` };
@@ -290,4 +318,105 @@ export async function inviteVoiceMembers(interaction) {
   }
 
   return { success: invited.length > 0 ? `Invited ${invited.length} member(s).` : 'No one new was invited.' };
+}
+
+// Opens the rename modal (the submit is handled by applyVoiceRename).
+export async function requestVoiceRename(interaction) {
+  const row = getVoiceRowByChannel(interaction.guildId, interaction.channelId);
+  if (!row) return { error: 'This is not a spawned voice channel.' };
+  if (!canControlVoice(row, interaction.member)) {
+    return { error: 'Only the channel owner or staff can rename this room.' };
+  }
+
+  const current = interaction.guild.channels.cache.get(interaction.channelId)?.name ?? '';
+  const modal = new ModalBuilder()
+    .setCustomId(CV_RENAME_MODAL_ID)
+    .setTitle('Rename Room')
+    .addComponents(
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId(CV_RENAME_INPUT_ID)
+          .setLabel('New room name (number suffix is optional)')
+          .setStyle(TextInputStyle.Short)
+          .setMinLength(1)
+          .setMaxLength(90)
+          .setValue(current.replace(/\s*·\s*\d+$/, '').slice(0, 90)),
+      ),
+    );
+
+  return { modal };
+}
+
+// Applies the rename submitted from the modal.
+export async function applyVoiceRename(interaction) {
+  const row = getVoiceRowByChannel(interaction.guildId, interaction.channelId);
+  if (!row) return { error: 'This is not a spawned voice channel.' };
+  if (!canControlVoice(row, interaction.member)) {
+    return { error: 'Only the channel owner or staff can rename this room.' };
+  }
+
+  const content = String(interaction.fields.getTextInputValue(CV_RENAME_INPUT_ID) ?? '')
+    .replace(/[\r\n]+/g, ' ')
+    .replace(/[`\\]/g, '')
+    .trim()
+    .slice(0, 90);
+  if (!content) return { error: 'The new room name is empty.' };
+
+  const channel = await interaction.guild.channels.fetch(interaction.channelId).catch(() => null);
+  if (!channel || !channel.isVoiceBased()) return { error: 'This is not a spawned voice channel.' };
+
+  try {
+    await channel.setName(content, `Room renamed by ${interaction.member.id}`);
+  } catch (err) {
+    return { error: `Could not rename the room: ${err.message}` };
+  }
+
+  await channel
+    .send({
+      embeds: [baseEmbed(COLORS.info).setDescription(`Room renamed to **${content}** by <@${interaction.member.id}>.`)],
+    })
+    .catch(() => {});
+  await refreshVoicePanel(channel, row);
+  return { success: `Room renamed to ${content}.` };
+}
+
+// Disconnects the selected members from the channel and revokes their access.
+export async function kickVoiceMembers(interaction) {
+  const row = getVoiceRowByChannel(interaction.guildId, interaction.channelId);
+  if (!row) return { error: 'This is not a spawned voice channel.' };
+  if (!canControlVoice(row, interaction.member)) {
+    return { error: 'Only the channel owner or staff can remove members.' };
+  }
+
+  const channel = await interaction.guild.channels.fetch(interaction.channelId).catch(() => null);
+  if (!channel || !channel.isVoiceBased()) return { error: 'This is not a spawned voice channel.' };
+
+  const removed = [];
+  for (const userId of interaction.values) {
+    if (userId === row.owner_id) continue;
+    const member = await interaction.guild.members.fetch(userId).catch(() => null);
+    if (member?.voice?.channelId === channel.id) {
+      await member.voice.setChannel(null, `Removed from voice channel by ${interaction.member.id}`).catch(() => {});
+    }
+    try {
+      await channel.permissionOverwrites.delete(userId, `Removed from voice channel by ${interaction.member.id}`);
+      removed.push(userId);
+    } catch (err) {
+      console.error('[voice] Remove failed:', err.message);
+    }
+  }
+
+  if (removed.length > 0) {
+    await channel
+      .send({
+        embeds: [
+          baseEmbed(COLORS.warn).setDescription(
+            `${removed.map((id) => `<@${id}>`).join(', ')} removed by <@${interaction.member.id}>.`,
+          ),
+        ],
+      })
+      .catch(() => {});
+  }
+
+  return { success: removed.length > 0 ? `Removed ${removed.length} member(s).` : 'No one was removed.' };
 }

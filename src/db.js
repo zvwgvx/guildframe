@@ -69,6 +69,7 @@ CREATE TABLE IF NOT EXISTS voice_channels (
   guild_id         TEXT NOT NULL,
   channel_id       TEXT NOT NULL,
   owner_id         TEXT NOT NULL,
+  number           INTEGER NOT NULL DEFAULT 0,
   panel_message_id TEXT,
   created_at       INTEGER NOT NULL
 );
@@ -76,6 +77,14 @@ CREATE TABLE IF NOT EXISTS voice_channels (
 CREATE INDEX IF NOT EXISTS idx_voice_guild   ON voice_channels (guild_id, owner_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_voice_channel ON voice_channels (channel_id);
 `);
+
+// Legacy databases: add the number column when the table already exists without it
+// (the statement fails silently when the fresh schema above created it).
+try {
+  db.exec('ALTER TABLE voice_channels ADD COLUMN number INTEGER NOT NULL DEFAULT 0');
+} catch {
+  // Column already exists.
+}
 
 // Migration from the initial schema (active flag -> status, offence numbering).
 const columns = db.prepare('PRAGMA table_info(cases)').all().map((c) => c.name);
@@ -296,12 +305,17 @@ export function closeTicketRow(id, { closedBy, note = null }) {
 
 // ---------- Dynamic voice channels (create-voice) ----------
 
-export function createVoiceRow({ guildId, channelId, ownerId, createdAt = Date.now() }) {
+export function createVoiceRow({ guildId, channelId, ownerId, number = 0, createdAt = Date.now() }) {
   db.prepare(
-    'INSERT INTO voice_channels (guild_id, channel_id, owner_id, created_at) VALUES (?, ?, ?, ?)',
-  ).run(guildId, channelId, ownerId, createdAt);
+    'INSERT INTO voice_channels (guild_id, channel_id, owner_id, number, created_at) VALUES (?, ?, ?, ?, ?)',
+  ).run(guildId, channelId, ownerId, number, createdAt);
   return db.prepare('SELECT * FROM voice_channels WHERE channel_id = ?').get(channelId);
 }
+
+export const getNextVoiceNumber = (guildId) =>
+  Number(
+    db.prepare('SELECT COALESCE(MAX(number), 0) + 1 AS next FROM voice_channels WHERE guild_id = ?').get(guildId)?.next,
+  );
 
 export const getVoiceRowByChannel = (guildId, channelId) =>
   db.prepare('SELECT * FROM voice_channels WHERE guild_id = ? AND channel_id = ?').get(guildId, channelId) ?? null;

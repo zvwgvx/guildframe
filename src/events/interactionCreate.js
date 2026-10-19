@@ -3,7 +3,20 @@ import { config } from '../config.js';
 import { errorEmbed, successEmbed } from '../utils/embeds.js';
 import { isConfiguredGuild } from '../utils/permissions.js';
 import { TICKET_BUTTON_ID, TICKET_CLOSE_BUTTON_ID, canManageTicket, closeTicket, getTicketForChannel, openTicket } from '../services/tickets.js';
-import { CV_INVITE_ID, CV_LIMIT_ID, CV_PRIVACY_ID, inviteVoiceMembers, setVoiceLimit, toggleVoicePrivacy } from '../services/createvoice.js';
+import {
+  CV_INVITE_ID,
+  CV_KICK_ID,
+  CV_LIMIT_ID,
+  CV_PRIVACY_ID,
+  CV_RENAME_ID,
+  CV_RENAME_MODAL_ID,
+  applyVoiceRename,
+  inviteVoiceMembers,
+  kickVoiceMembers,
+  requestVoiceRename,
+  setVoiceLimit,
+  toggleVoicePrivacy,
+} from '../services/createvoice.js';
 
 export const name = Events.InteractionCreate;
 
@@ -60,6 +73,29 @@ export async function execute(interaction, client) {
   }
 
   // Create-voice panel actions inside a spawned voice channel.
+  if (interaction.isButton() && interaction.customId === CV_RENAME_ID) {
+    const result = await requestVoiceRename(interaction).catch((err) => {
+      console.error('[voice] Rename request failed:', err.message);
+      return { error: 'Could not open the rename dialog. Try again in a moment.' };
+    });
+    if (result?.error) {
+      await interaction.reply({ embeds: [errorEmbed(result.error)], flags: MessageFlags.Ephemeral }).catch(() => {});
+    } else {
+      await interaction.showModal(result.modal).catch(() => {});
+    }
+    return;
+  }
+
+  if (interaction.isModalSubmit() && interaction.customId === CV_RENAME_MODAL_ID) {
+    const result = await applyVoiceRename(interaction).catch((err) => {
+      console.error('[voice] Rename failed:', err.message);
+      return { error: 'Could not rename the room. Try again in a moment.' };
+    });
+    const embed = result?.error ? errorEmbed(result.error) : successEmbed(result.success);
+    await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral }).catch(() => {});
+    return;
+  }
+
   if (interaction.isButton() && interaction.customId === CV_PRIVACY_ID) {
     const result = await toggleVoicePrivacy(interaction).catch((err) => {
       console.error('[voice] Privacy toggle failed:', err.message);
@@ -84,6 +120,16 @@ export async function execute(interaction, client) {
     const result = await inviteVoiceMembers(interaction).catch((err) => {
       console.error('[voice] Invite failed:', err.message);
       return { error: 'Could not invite members. Try again in a moment.' };
+    });
+    const embed = result?.error ? errorEmbed(result.error) : successEmbed(result.success);
+    await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral }).catch(() => {});
+    return;
+  }
+
+  if (interaction.isUserSelectMenu() && interaction.customId === CV_KICK_ID) {
+    const result = await kickVoiceMembers(interaction).catch((err) => {
+      console.error('[voice] Remove failed:', err.message);
+      return { error: 'Could not remove members. Try again in a moment.' };
     });
     const embed = result?.error ? errorEmbed(result.error) : successEmbed(result.success);
     await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral }).catch(() => {});

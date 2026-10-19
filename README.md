@@ -24,7 +24,7 @@ Discord moderation bot with **role-based mutes**, **warnings + offence count**, 
 | Bot status | A live **Status Report** card (Components V2) in `botStatusChannelId`: Bot Status (CPU cores/usage, memory, uptime), Environment (Node.js / discord.js / platform / bot version) and Websocket (ping, shards, state). Refreshed every minute. |
 | Server stats | A live **Server Report** card in `serverStatsChannelId`: Members (All / Humans / Bots), Online (live counts - needs the Presence Intent) and Server (Boosts, Channels, Roles, Created date). Optionally keeps a voice channel (`serverStatsVoiceChannelId`) automatically renamed to `All Members: N` (throttled to Discord's 2-renames/10-minutes limit). |
 | Tickets | One-button panel in `tickets.panelChannelId` (basic text, no command list). Pressing **Open Ticket** creates a text channel in the same category, visible only to the opener and `tickets.staffRoleId`. The opener is welcomed with a **Ticket** card, the opener and staff role are mentioned and the only button is **Close Ticket**. `rename` / `add` / `remove` are ticket-staff only; `close` also works for the owner. One open ticket per user. |
-| Create Voice | A lobby voice channel (`createVoice.lobbyChannelId`) that spawns a personal voice channel on join, in the same category. Its text chat gets a **Voice Channel** panel: privacy toggle (Public/Private), user limit select, and a member-invite select. Only the channel owner or staff may use the panel. Ownership passes to the first remaining member when the owner leaves; the channel is deleted when it empties. |
+| Create Voice | A lobby voice channel (`createVoice.lobbyChannelId`) that spawns a personal voice channel on join, in the same category. The room is named after the joiner with a per-guild sequence number (`<username>'s VC · 01`) and the owner gets full control through a panel in its text chat: **Rename Room** (modal dialog), **Set Private/Set Public**, **User Limit** select (Unlimited, 2-10), **Invite a member** and **Remove a member** selects. Ownership passes to the first remaining member when the owner leaves; the channel is deleted when it empties. Needs the `GuildVoiceStates` intent (enabled in the code, not privileged). |
 | Install / Uninstall | `/install` checks every configured role/channel, applies the setup and posts/refreshes the setup messages (overwrites existing ones). `/uninstall` deletes those messages again. |
 
 ## Requirements
@@ -245,10 +245,15 @@ Note: inside the muted-commands channel, muted users can run `/history` / `/puni
 
 ### Create Voice
 
-- `createVoice.lobbyChannelId` is the trigger channel (for example named `Create Voice`). Joining it spawns `<username>'s VC` as a **voice channel in the same category** and moves the joiner there; joining again reconnects that member to their own channel instead of spawning a second one.
-- The new channel's text chat carries a **Voice Channel** panel (plain embed, no emoji) with three controls: `Set Private`/`Set Public` (private denies `@everyone` view and connect; the owner and invited members keep access), a `User Limit` select (Unlimited, 2, 3, 4, 5, 6, 8, 10) and an `Invite a member` user select (up to five at once; the mention is announced in the chat).
+- `createVoice.lobbyChannelId` is the trigger channel (for example named `Create Voice`). Joining it spawns a personal voice channel **named after the joiner with a per-guild sequence number** (`<username>'s VC · 01`, `· 02`, ...) in the **same category** and moves the joiner there; joining again reconnects that member to their own channel instead of spawning a second one. A database number column survives restarts so the sequence keeps increasing.
+- The new channel's text chat carries a **Voice Channel** panel (plain embed, no emoji) with the current owner, privacy and user limit plus four controls:
+  - `Rename Room` - opens a modal dialog; the owner can rename the room freely (the number suffix is only in the auto-generated name).
+  - `Set Private` / `Set Public` - private denies `@everyone` view and connect while the owner and invited members keep access; public removes the `@everyone` restriction.
+  - `User Limit` select - Unlimited, 2, 3, 4, 5, 6, 8, 10.
+  - `Invite a member` and `Remove a member` selects - up to five at once; removing also disconnects the member and revokes their access.
 - Panel use is restricted to the **channel owner or staff** (ticket staff role / mod role / administrator). Speak permission is never force-granted, so a server-wide mute stays effective.
 - When the owner leaves, ownership transfers to the first remaining member and the panel re-renders. When the channel empties, it is **deleted automatically** and its row is removed from the `voice_channels` table.
+- Requires the `GuildVoiceStates` gateway intent - included in the code and not privileged, no Developer Portal change needed.
 
 ### Bot status channel
 
