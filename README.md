@@ -69,7 +69,8 @@ CLIENT_ID=__REDACTED__
   "doNotType": {
     "channelId": "123...",        // the "do not type here" channel
     "action": "kick",             // kick (default) | alert | mute | ban
-    "purgeMinutes": 30            // wipe the kicked user's messages from the last N minutes (0 = off)
+    "purgeMinutes": 30,           // wipe the kicked user's messages from the last N minutes (0 = off)
+    "rejoinUrl": "https://discord.sentialab.org"  // link DM-ed to kicked users as a rejoin option
   },
   },
   "tickets": {
@@ -236,6 +237,7 @@ Note: inside the muted-commands channel, muted users can run `/history` / `/puni
 - Below it, counter buttons track `Caught`, `Muted`, `Kicked`, `Banned` (counters persist in the database; action buttons appear once used). No emoji anywhere in the UI.
 - Every caught message is logged to the mod log channel with the author, content preview and a jump link.
 - When the trap action is `kick`, the author is kicked and the bot then **purges every message they sent in the last `purgeMinutes` minutes** (default 30) across all channels and active threads it can manage (needs Manage Messages). The result ("Deleted N message(s) from the last 30 minutes in M channel(s).") is shown in the alert embed's `History cleanup` field.
+- Before the kick, SENTIA **DMs the member a Kick Notice** embed: it explains the automatic kick (with the case number), states that the do-not-type channel is a detection trap, and offers the rejoin link from `doNotType.rejoinUrl` (default `https://discord.sentialab.org`) for anyone who typed there by accident. The mod-log entry gains a `Notice` field showing whether the DM was delivered.
 
 ### Tickets
 

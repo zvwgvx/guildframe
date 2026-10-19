@@ -2,6 +2,7 @@ import { config } from '../config.js';
 import { COLORS } from '../constants.js';
 import { createCase, hideCase } from '../db.js';
 import { applyMute } from '../services/mutes.js';
+import { sendKickNotice } from '../services/notices.js';
 import { purgeRecentMessages } from '../services/purge.js';
 import { logCase, sendModLog } from '../services/log.js';
 import { onTrapCaught } from '../services/trap.js';
@@ -46,6 +47,11 @@ export async function handleDoNotType(message, client) {
           type: 'kick',
           reason: 'Posted in the do-not-type channel',
         });
+
+        // DM the rejoin notice before the kick - without a shared server the
+        // DM would be impossible afterwards.
+        const noticed = await sendKickNotice({ member, guild, caseNumber: caseRow.case_number });
+
         await member.kick(`Case #${caseRow.case_number} | Posted in the do-not-type channel`);
 
         // Wipe the user's chat history from the configured window, server-wide.
@@ -59,6 +65,13 @@ export async function handleDoNotType(message, client) {
 
         await logCase(guild, caseRow, { clientId: client.user.id });
         fields.push({ name: 'Action', value: `Kicked (Case #${caseRow.case_number})`, inline: true });
+        fields.push({
+          name: 'Notice',
+          value: noticed
+            ? 'SENTIA notified the user by DM with the rejoin link.'
+            : 'DM delivery failed - the user could not be notified.',
+          inline: true,
+        });
         if (purge && !purge.skipped) {
           fields.push({
             name: 'History cleanup',

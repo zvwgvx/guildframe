@@ -30,7 +30,8 @@
   "doNotType": {
     "channelId": "1561667318046662766",
     "action": "kick",
-    "purgeMinutes": 30
+    "purgeMinutes": 30,
+    "rejoinUrl": "https://discord.sentialab.org"
   },
   "warnEscalation": {
     "threshold": 0,

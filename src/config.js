@@ -27,7 +27,7 @@ const DEFAULT_FILE_CONFIG = {
   tickets: { panelChannelId: '', staffRoleId: '' },
   createVoice: { lobbyChannelId: '' },
   welcome: { channelId: '' },
-  doNotType: { channelId: '', action: 'kick', purgeMinutes: 30 },
+  doNotType: { channelId: '', action: 'kick', purgeMinutes: 30, rejoinUrl: 'https://discord.sentialab.org' },
   warnEscalation: { threshold: 0, duration: '1h' },
 };
 
