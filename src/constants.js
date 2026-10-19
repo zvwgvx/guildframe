@@ -1,4 +1,4 @@
-// Hằng số dùng chung toàn bot.
+// Shared constants.
 
 export const COLORS = {
   warn: 0xfee75c,
@@ -15,22 +15,28 @@ export const COLORS = {
   gray: 0x95a5a6,
 };
 
-// Metadata hiển thị cho từng loại case.
+// Display metadata per case type.
 export const TYPE_META = {
-  warn: { label: 'Cảnh cáo', emoji: '⚠️', color: COLORS.warn },
-  mute: { label: 'Mute', emoji: '🔇', color: COLORS.mute },
-  unmute: { label: 'Unmute', emoji: '🔊', color: COLORS.unmute },
-  kick: { label: 'Kick', emoji: '👢', color: COLORS.kick },
-  ban: { label: 'Ban', emoji: '🔨', color: COLORS.ban },
-  unban: { label: 'Unban', emoji: '♻️', color: COLORS.unban },
-  note: { label: 'Ghi chú', emoji: '📝', color: COLORS.note },
+  warn: { label: 'WARN', color: COLORS.warn },
+  mute: { label: 'MUTE', color: COLORS.mute },
+  unmute: { label: 'UNMUTE', color: COLORS.unmute },
+  kick: { label: 'KICK', color: COLORS.kick },
+  ban: { label: 'BAN', color: COLORS.ban },
+  unban: { label: 'UNBAN', color: COLORS.unban },
+  note: { label: 'NOTE', color: COLORS.note },
 };
 
-// Các loại case được tính vào "điểm vi phạm" (offence count).
+// Case types that count towards the offence number.
 export const OFFENCE_TYPES = ['warn', 'mute', 'kick', 'ban'];
 
-export const MAX_MUTE_MS = 90 * 24 * 60 * 60 * 1000; // 90 ngày
-export const MAX_BAN_MS = 365 * 24 * 60 * 60 * 1000; // 365 ngày
+export const CASE_STATUS = {
+  active: { label: 'Active', dot: '🟢' },
+  expired: { label: 'Expired', dot: '⚪' },
+  removed: { label: 'Removed', dot: '⚪' },
+};
+
+export const MAX_MUTE_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
+export const MAX_BAN_MS = 365 * 24 * 60 * 60 * 1000; // 365 days
 
 export const HISTORY_PAGE_SIZE = 5;
 export const WARNINGS_PAGE_SIZE = 5;

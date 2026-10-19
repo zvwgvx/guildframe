@@ -12,25 +12,25 @@ function walk(dir) {
   return out;
 }
 
-// Nạp tất cả slash command trong thư mục (hỗ trợ thư mục con).
+// Loads every slash command from a directory (subdirectories supported).
 export async function loadCommands(dir, collection) {
   for (const file of walk(dir)) {
     const mod = await import(pathToFileURL(file).href);
     if (mod?.data && typeof mod.execute === 'function') {
       collection.set(mod.data.name, mod);
     } else {
-      console.warn(`[loader] Bỏ qua ${file}: thiếu export data/execute`);
+      console.warn(`[loader] Skipping ${file}: missing data/execute export`);
     }
   }
   return collection;
 }
 
-// Nạp tất cả event trong thư mục. Mỗi file export: name, execute, (tuỳ chọn) once.
+// Loads every event from a directory. Each file exports: name, execute, and optionally once.
 export async function loadEvents(client, dir) {
   for (const file of walk(dir)) {
     const mod = await import(pathToFileURL(file).href);
     if (!mod?.name || typeof mod.execute !== 'function') {
-      console.warn(`[loader] Bỏ qua ${file}: thiếu export name/execute`);
+      console.warn(`[loader] Skipping ${file}: missing name/execute export`);
       continue;
     }
     const handler = (...args) => mod.execute(...args, client);

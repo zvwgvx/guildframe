@@ -4,36 +4,38 @@ import { createCase, getActiveCases, hideCase } from '../db.js';
 import { logCase } from '../services/log.js';
 import { scheduleCase } from '../services/scheduler.js';
 import { formatDuration, parseDuration } from '../utils/duration.js';
-import { buildCaseEmbed, errorEmbed, ts } from '../utils/embeds.js';
+import { buildActionEmbed, errorEmbed } from '../utils/embeds.js';
 import { canModerateMember, ensureBotPermissions, ensureModerator } from '../utils/permissions.js';
 
 export const data = new SlashCommandBuilder()
   .setName('ban')
-  .setDescription('Ban một người dùng (hỗ trợ temp ban kèm thời hạn)')
-  .addUserOption((o) => o.setName('user').setDescription('Người dùng cần ban').setRequired(true))
-  .addStringOption((o) => o.setName('duration').setDescription('Thời hạn: 1d, 7d, 30d... Bỏ trống = ban vĩnh viễn'))
-  .addStringOption((o) => o.setName('reason').setDescription('Lý do ban'))
+  .setDescription('Ban a user (supports temporary bans)')
+  .addUserOption((o) => o.setName('user').setDescription('The user to ban').setRequired(true))
+  .addStringOption((o) =>
+    o.setName('duration').setDescription('Duration: 1d, 7d, 30d, perm (omit = permanent)'),
+  )
+  .addStringOption((o) => o.setName('reason').setDescription('Reason for the ban'))
   .addIntegerOption((o) =>
     o
       .setName('delete_messages')
-      .setDescription('Xóa tin nhắn gần đây của người này')
+      .setDescription('Delete recent messages from this user')
       .addChoices(
-        { name: 'Không xóa', value: 0 },
-        { name: '1 giờ', value: 3600 },
-        { name: '6 giờ', value: 21600 },
-        { name: '24 giờ', value: 86400 },
+        { name: 'Do not delete', value: 0 },
+        { name: 'Last hour', value: 3600 },
+        { name: 'Last 6 hours', value: 21600 },
+        { name: 'Last 24 hours', value: 86400 },
       ),
   );
 
 export async function execute(interaction, client) {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-  if (!(await ensureModerator(interaction, PermissionsBitField.Flags.BanMembers, 'Ban thành viên'))) return;
-  if (!(await ensureBotPermissions(interaction, PermissionsBitField.Flags.BanMembers, 'Ban thành viên'))) return;
+  if (!(await ensureModerator(interaction, PermissionsBitField.Flags.BanMembers, 'Ban Members'))) return;
+  if (!(await ensureBotPermissions(interaction, PermissionsBitField.Flags.BanMembers, 'Ban Members'))) return;
 
   const user = interaction.options.getUser('user');
   if (user.id === client.user.id) {
-    await interaction.editReply({ embeds: [errorEmbed('Không thể tự ban chính mình.')] });
+    await interaction.editReply({ embeds: [errorEmbed('I cannot ban myself.')] });
     return;
   }
 
@@ -42,22 +44,19 @@ export async function execute(interaction, client) {
 
   const existing = await interaction.guild.bans.fetch(user.id).catch(() => null);
   if (existing) {
-    await interaction.editReply({ embeds: [errorEmbed(`${user} đã bị ban từ trước.`)] });
+    await interaction.editReply({ embeds: [errorEmbed(`<@${user.id}> is already banned.`)] });
     return;
   }
 
-  const durationInput = interaction.options.getString('duration');
   let durationMs;
   try {
-    durationMs = parseDuration(durationInput);
+    durationMs = parseDuration(interaction.options.getString('duration'));
   } catch (err) {
     await interaction.editReply({ embeds: [errorEmbed(err.message)] });
     return;
   }
   if (durationMs && durationMs > MAX_BAN_MS) {
-    await interaction.editReply({
-      embeds: [errorEmbed(`Thời hạn ban tối đa là ${formatDuration(MAX_BAN_MS)}.`)],
-    });
+    await interaction.editReply({ embeds: [errorEmbed(`Maximum ban duration is ${formatDuration(MAX_BAN_MS)}.`)] });
     return;
   }
 
@@ -75,20 +74,26 @@ export async function execute(interaction, client) {
   try {
     await interaction.guild.bans.create(user.id, {
       deleteMessageSeconds,
-      reason: `Case #${caseRow.case_number} bởi ${interaction.user.tag}${reason ? `: ${reason}` : ''}`.slice(0, 512),
+      reason: `Case #${caseRow.case_number} by ${interaction.user.tag}${reason ? `: ${reason}` : ''}`.slice(0, 512),
     });
   } catch (err) {
     hideCase(caseRow.id);
-    await interaction.editReply({ embeds: [errorEmbed(`Không thể ban: ${err.message}`)] });
+    await interaction.editReply({ embeds: [errorEmbed(`Could not ban: ${err.message}`)] });
     return;
   }
 
   if (durationMs) scheduleCase(caseRow.id);
   await logCase(interaction.guild, caseRow, { clientId: client.user.id });
-
-  const embed = buildCaseEmbed(caseRow, { clientId: client.user.id });
-  if (caseRow.expires_at) {
-    embed.addFields({ name: '⏳ Tự động unban', value: ts(caseRow.expires_at, 'R'), inline: true });
-  }
-  await interaction.editReply({ embeds: [embed] });
+  await interaction.editReply({
+    embeds: [
+      buildActionEmbed({
+        action: 'ban',
+        target: user,
+        durationMs,
+        reason,
+        offenceNo: caseRow.offence_no,
+        guildName: interaction.guild.name,
+      }),
+    ],
+  });
 }

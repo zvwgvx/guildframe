@@ -1,138 +1,204 @@
 # Moderation Bot
 
-Bot moderation cho Discord: **mute bằng role**, **cảnh cáo + offence count**, **lịch sử punishment**, **mod log / audit log** (bắt cả thao tác làm ngoài bot).
+Discord moderation bot with **role-based mutes**, **warnings + offence count**, **punishment history** (`=puns`), **mod log / audit log** (including out-of-band Discord actions) and a **do-not-type channel trap** to catch bots/selfbots.
 
 - **Stack:** Node.js + discord.js v14
-- **Database:** SQLite (module `node:sqlite` có sẵn của Node.js — không cần cài DB, không cần native module)
-- **Lệnh:** Slash commands, UI tiếng Việt
+- **Database:** SQLite via the built-in `node:sqlite` module (no native modules, no DB server)
+- **Commands:** Slash commands (global) + prefix commands (`=`)
+- **Language:** all code, comments, embeds and messages in English
 
-## Tính năng
+## Features
 
-| Nhóm | Chi tiết |
+| Area | Details |
 | --- | --- |
-| Mute | Gán/gỡ role `Muted` (chặn chat + voice từng kênh), mute tạm thời (`/mute user: duration:1h`) hoặc vĩnh viễn; hết hạn tự gỡ (scheduler + khôi phục khi bot restart); thành viên rời server rồi quay lại vẫn bị mute lại |
-| Cảnh cáo | `/warn`, xem/xóa cảnh cáo; **auto-mute khi đạt ngưỡng cảnh cáo** (cấu hình bật/tắt) |
-| Offence count | Mọi punishment (warn/mute/kick/ban) được đếm thành case; `/offences` xem điểm vi phạm 1 người hoặc top 10 |
-| Lịch sử | `/history` xem toàn bộ case của 1 người (phân trang, lọc theo loại); `/case view/delete` |
-| Mod log | Mọi hành động của bot (kể cả tự động) được log vào kênh đã cấu hình |
-| Audit log | Bắt ban/unban/kick/timeout/thay đổi role Muted làm **trực tiếp qua Discord** và log lại kèm người thực hiện |
-| Temp ban | `/ban` kèm `duration` → hết hạn tự unban |
+| Mute | Assign/remove the `Muted` role with per-channel restrictions. Temporary (`=mute 123 3d spam`) or permanent (`=mute 123 spam`). Expiry is scheduled and restored after restarts. Muted members who rejoin get re-muted automatically. |
+| Warnings | `=warn`, `/warnings list`, `/warnings clear`. Optional automatic mute when a user reaches the configured warning threshold (`warnEscalation` in config.json). |
+| Offence count | Every warn/mute/kick/ban creates a numbered case and increases the user's offence number. `=offences` shows a user's breakdown or the top 10 offenders. |
+| Punishment history | `=puns <user>` / `=h` / `=history` / `=punishments` and `/history` `/punishments` - paginated embeds in the `Punishments • user • Page x of y` style with Previous/Next buttons. |
+| Mod log | Every bot action (including automatic ones) is logged to `modLogChannelId` as a case embed. |
+| Audit log | Ban / unban / kick / timeout / manual Muted-role changes performed directly in Discord are caught via the audit log and logged with the executor. |
+| Temp ban | `/ban user duration:` or `=ban <user> <duration> [reason]` - unbanned automatically on expiry. |
+| Do-not-type trap | Any message posted in `doNotType.channelId` is logged with a mod-role ping. Optionally auto-`mute` / `kick` / `ban` the author (never applied to real bot accounts - alert only). |
 
-## Yêu cầu
+## Requirements
 
-- **Node.js >= 23.4** (khuyến nghị Node 24+; cần `node:sqlite` + `--env-file`)
-- Một Discord application ([Developer Portal](https://discord.com/developers/applications))
+- **Node.js >= 23.4** (Node 24+ recommended; needs `node:sqlite` and `--env-file`)
+- A Discord application ([Developer Portal](https://discord.com/developers/applications))
 
-## Cài đặt
+## Configuration
 
-### 1. Tạo bot trên Developer Portal
+Configuration is split in two files:
 
-1. Vào Developer Portal → **New Application** → đặt tên.
-2. Tab **Bot** → **Reset Token** → copy token.
-3. Tab **Bot** → bật **Server Members Intent** (bắt buộc, để nhận sự kiện member join/leave).
-4. Tab **General Information** → copy **Application ID**.
+### `.env` - secrets only
 
-### 2. Mời bot vào server
+```env
+DISCORD_TOKEN=__REDACTED__
+CLIENT_ID=__REDACTED__
+```
 
-Link mời (thay `YOUR_CLIENT_ID`):
+### `config.json` - everything else
+
+```jsonc
+{
+  "prefix": "=",                  // prefix for text commands
+  "guildId": "123...",            // your server ID (the bot only works here)
+  "muteRoleId": "123...",         // Muted role ID (leave empty to auto-create on first mute)
+  "muteRoleName": "Muted",        // name used when the bot creates the role
+  "modRoleId": "123...",          // role allowed to use moderation commands
+  "modLogChannelId": "123...",    // channel receiving all logs
+  "doNotType": {
+    "channelId": "123...",        // the "do not type here" channel
+    "action": "alert"             // alert | mute | kick | ban
+  },
+  "warnEscalation": {
+    "threshold": 0,               // active warnings needed to auto-mute (0 = off)
+    "duration": "1h"              // auto-mute duration
+  }
+}
+```
+
+`config.json` is read at startup and **written back** when the bot auto-creates the Muted role, so `muteRoleId` fills itself in.
+
+## Setup
+
+### 1. Create the bot
+
+1. Developer Portal -> **New Application**.
+2. **Bot** tab -> **Reset Token** -> copy the token into `.env`.
+3. **Bot** tab -> enable **Server Members Intent** and **Message Content Intent** (both required).
+4. **General Information** tab -> copy the **Application ID** into `.env`.
+
+### 2. Invite the bot
 
 ```
 https://discord.com/oauth2/authorize?client_id=YOUR_CLIENT_ID&permissions=268520582&scope=bot%20applications.commands
 ```
 
-Quyền được cấp: `View Channels`, `Send Messages`, `Embed Links`, `Read Message History`, `Manage Roles`, `Kick Members`, `Ban Members`, `View Audit Log`.
+Includes: View Channels, Send Messages, Embed Links, Read Message History, Manage Roles, Kick Members, Ban Members, View Audit Log.
 
-> **Quan trọng:** sau khi mời, kéo role của bot lên **trên** role `Muted` trong Server Settings → Roles.
+> Move the bot's role **above** the `Muted` role in Server Settings -> Roles.
 
-### 3. Cấu hình và chạy
+### 3. Run
 
 ```bash
 npm install
-cp .env.example .env      # rồi điền DISCORD_TOKEN + CLIENT_ID
-npm run deploy            # đăng ký slash command (điền GUILD_ID vào .env để hiện ngay, không cần chờ)
+cp .env.example .env          # fill in DISCORD_TOKEN + CLIENT_ID
+# edit config.json: guildId, modLogChannelId, modRoleId, doNotType.channelId...
+npm run deploy                # register global slash commands
 npm start
 ```
 
-### 4. Setup trong server (1 lần)
+### 4. In the server
 
 ```
-/setup log_channel:#mod-log
+/setup
 ```
 
-Bot sẽ: tạo role `Muted` → áp overwrite chặn quyền (Send Messages, Add Reactions, Create Threads, Speak...) trên **toàn bộ kênh hiện có** → đặt kênh log. Kênh mới tạo về sau được bot tự áp dụng.
+Creates/uses the Muted role, applies restrictions to every existing channel, and prints a summary. New channels are restricted automatically.
 
-## Danh sách lệnh
+## Commands
 
-| Lệnh | Mô tả | Quyền cần |
-| --- | --- | --- |
-| `/setup [log_channel]` | Tạo role Muted + đồng bộ chặn quyền toàn server + đặt kênh log | Manage Server |
-| `/config show` | Xem cấu hình | Manage Server |
-| `/config set-log channel:` | Đặt kênh mod log | Manage Server |
-| `/config set-mute-role role:` | Dùng role có sẵn làm role Muted | Manage Server |
-| `/config set-mod-role role:` | Cấp quyền dùng lệnh mod cho 1 role | Manage Server |
-| `/config set-warn-escalation threshold: duration:` | Bật/tắt auto-mute khi đủ ngưỡng cảnh cáo (`0` = tắt) | Manage Server |
-| `/warn user: [reason:]` | Cảnh cáo + tăng offence count | Manage Messages |
-| `/warnings list user:` | Xem cảnh cáo (phân trang) | Manage Messages |
-| `/warnings clear user: [reason:]` | Xóa cảnh cáo đang hiệu lực | Manage Messages |
-| `/mute user: [duration:] [reason:]` | Mute bằng role (bỏ trống duration = vĩnh viễn) | Manage Roles |
-| `/unmute user: [reason:]` | Gỡ mute | Manage Roles |
-| `/kick user: [reason:]` | Kick | Kick Members |
-| `/ban user: [duration:] [reason:] [delete_messages:]` | Ban / temp ban | Ban Members |
-| `/unban user_id: [reason:]` | Gỡ ban theo ID | Ban Members |
-| `/history user: [type:]` | Lịch sử punishment (phân trang) | Manage Messages |
-| `/offences [user:]` | Offence count của 1 người / top 10 | Manage Messages |
-| `/case view number:` | Chi tiết 1 case | Manage Messages |
-| `/case delete number: [reason:]` | Ẩn case khỏi lịch sử (giữ audit trail) | Manage Server |
+### Prefix (`=`)
 
-> Người có **role moderator** (`/config set-mod-role`) hoặc **Administrator** được dùng mọi lệnh dù không có quyền Discord tương ứng.
-> Định dạng duration: `30m`, `2h`, `7d`, `1d12h`; số trần (vd `90`) = 90 phút.
+| Command | Description |
+| --- | --- |
+| `=mute <uid\|mention\|name> <duration> [reason]` | Mute a member. Duration: `5m`, `2h`, `3d`, `1d12h`, `perm`. Omit duration = permanent. |
+| `=unmute <user> [reason]` | Remove the mute. |
+| `=kick <user> [reason]` | Kick a member. |
+| `=ban <user> [duration] [reason]` | Ban (duration optional = temp ban). |
+| `=unban <user id> [reason]` | Remove a ban. |
+| `=warn <user> [reason]` | Warn a member. |
+| `=puns` / `=h` / `=history` / `=punishments <user> [type]` | Punishment history with page buttons. |
+| `=offences [user]` | Offence count (no user = top 10). |
+| `=case <number>` | View a case. |
+| `=help` | List prefix commands. |
 
-## Cách hoạt động
+Examples:
 
-### Case system
-- Mọi punishment tạo 1 **case** đánh số tăng dần theo server (`Case #12`) — kể cả auto-mute, unmute, unban, ghi chú.
-- `active = 0` khi hết hạn/bị gỡ → history hiển thị ⚪; `/case delete` thêm `hidden = 1` → ẩn hẳn nhưng vẫn còn trong DB.
-- Offence count = tổng số case loại `warn + mute + kick + ban` (không tính unmute/unban/note).
+```
+=mute 134029771369230409 14d Negative Use of Disabilities
+=mute @GreedNot 5m spam
+=mute GreedNot perm ban evasion
+=puns 803207908203429938
+```
+
+Targets accept a **user ID**, a **mention** (`<@123...>`) or a **username**.
+
+### Slash (global)
+
+| Command | Description |
+| --- | --- |
+| `/mute user duration: reason:` | Mute (same rules as prefix). |
+| `/unmute user reason:` | Unmute. |
+| `/kick user reason:` | Kick. |
+| `/ban user duration: reason: delete_messages:` | Ban / temp ban. |
+| `/unban user_id reason:` | Unban. |
+| `/warn user reason:` | Warn. |
+| `/history user type:` and `/punishments user type:` | Punishment history. |
+| `/offences [user]` | Offence count / top 10. |
+| `/case view|delete number:` | View or hide a case. |
+| `/warnings list|clear user:` | Manage warnings. |
+| `/setup` | Create Muted role + apply channel restrictions. |
+
+> Users with the configured `modRoleId` (or Administrators) can use every command; otherwise the matching Discord permission is required (Manage Roles, Kick Members, Ban Members, Manage Messages, Manage Server).
+
+## How it works
+
+### Cases
+
+- Every action creates a numbered case (`Case #12`, per server) - including automatic mutes, unmutes, unbans and notes.
+- `status` is `active`, `expired` (timer ran out) or `removed` (undone early / cleared). History shows the matching dot: 🟢 Active, ⚪ Expired/Removed.
+- `offence_no` counts only warn/mute/kick/ban cases and is shown as `(Offence #N)` next to the reason.
+- `/case delete` sets `hidden = 1` - the case disappears from history but stays in the database.
 
 ### Mute
-- Role `Muted` **không tự chặn được ai** (role không có quyền "trừ") — bot chặn bằng overwrite `SendMessages: false`... cho role đó trên từng kênh (`/setup` áp toàn bộ, kênh mới tự áp qua event `channelCreate`).
-- Mute tạm thời: lưu `expires_at` trong DB, scheduler `setTimeout` (chunk 24.8 ngày cho case dài) — bot restart vẫn khôi phục.
-- Thành viên bị mute mà rời server rồi join lại: bot tự gán lại role nếu case còn hiệu lực.
 
-### Audit log
-- Hành động của bot → log case đầy đủ (ai làm, lý do, thời hạn).
-- Hành động làm trực tiếp qua Discord UI (ban/kick/unban/timeout/gán-gỡ role Muted) → bắt qua `guildAuditLogEntryCreate`, log kèm người thực hiện, gắn nhãn "thao tác ngoài bot". Bot tự bỏ qua entry do chính nó tạo (tránh log trùng).
+- A role alone cannot remove permissions, so the bot denies `Send Messages`, `Add Reactions`, `Create Threads`, `Speak`, ... via **channel overwrites** for the Muted role (`/setup` applies them everywhere; new channels are handled by the `channelCreate` event).
+- Temporary mutes are stored with `expires_at` and re-scheduled on boot; expiring mutes have the role removed automatically and the case marked `expired`.
 
-## Cấu trúc
+### Logging
+
+- Bot actions -> full case embed in the mod log channel.
+- Out-of-band actions (ban/kick/unban/timeout/manual Muted role changes done in the Discord UI) -> caught via `guildAuditLogEntryCreate` and logged with the executor, tagged `(out of band)`.
+- Do-not-type channel messages -> alert embed with a ping to `modRoleId`, plus the optional automatic action.
+
+## Project structure
 
 ```
+config.json               # bot configuration (IDs, prefix, traps)
+.env                      # secrets only (token, client id)
 src/
-├── index.js              # khởi động bot, nạp commands/events
-├── deploy-commands.js    # đăng ký slash command (npm run deploy)
-├── config.js             # đọc .env
-├── constants.js          # màu, metadata case type, giới hạn thời hạn
-├── db.js                 # SQLite schema + toàn bộ query
-├── commands/             # 12 slash command
-├── events/               # ready, interactionCreate, guildMemberAdd,
+├── index.js              # boot: intents, loaders, login
+├── deploy-commands.js    # global slash command registration
+├── config.js             # .env + config.json loader (writes muteRoleId back)
+├── constants.js          # colors, type metadata, statuses, limits
+├── db.js                 # SQLite schema + queries (cases, offences)
+├── commands/             # slash commands
+├── events/               # ready, interactionCreate, messageCreate, guildMemberAdd,
 │                         # guildAuditLogEntryCreate, channelCreate
+├── prefix/
+│   ├── handler.js        # =commands dispatcher (mute, puns, ...)
+│   └── doNotType.js      # do-not-type channel trap
 ├── services/
-│   ├── mutes.js          # role Muted, overwrite kênh, gán/gỡ mute
-│   ├── scheduler.js      # hẹn giờ temp mute / temp ban
-│   └── log.js            # gửi mod log
+│   ├── mutes.js          # Muted role + overwrites + assign/remove
+│   ├── scheduler.js      # temp mute/ban timers (restored on boot)
+│   ├── escalation.js     # auto-mute on warning threshold
+│   ├── historyCommand.js # shared /history + /punishments implementation
+│   └── log.js            # mod log sender
 └── utils/                # duration, embeds, permissions, paginate, loaders
-data/bot.sqlite           # database (tự tạo, đã gitignore)
+data/bot.sqlite           # database (auto-created, gitignored)
 ```
 
-## Ghi chú vận hành
+## Operational notes
 
-- **Đổi tên role Muted?** Đổi `MUTE_ROLE_NAME` trong `.env` hoặc dùng `/config set-mute-role` + `/setup`.
-- **Role Muted bị xóa?** Bot tự tạo lại ở lần mute kế tiếp (chạy lại `/setup` để đồng bộ overwrite các kênh).
-- **Bot không gửi được log?** Kiểm tra bot có `Send Messages` + `Embed Links` trong kênh log và role bot nằm trên role Muted.
-- **Backup:** chỉ cần copy `data/bot.sqlite` (và file `-wal` nếu đang chạy).
+- **Muted role deleted?** The bot recreates it (and updates `muteRoleId` in config.json) on the next mute; run `/setup` to re-sync channel overwrites.
+- **Logs not sent?** Check `modLogChannelId` and that the bot can Send Messages + Embed Links there.
+- **Backup:** copy `data/bot.sqlite` (plus `-wal` while running).
+- **Slash commands missing?** Global commands can take up to an hour to appear; re-run `npm run deploy`.
 
-## Roadmap (gợi ý mở rộng)
+## Roadmap ideas
 
-- [ ] Prefix commands (`?warn`, `?mute`...) cho thao tác nhanh
-- [ ] Message log (edit/delete + snipe)
-- [ ] Appeal / xin gỡ mute, DM thông báo cho người bị xử lý
+- [ ] Message log (edit/delete)
+- [ ] Appeal flow / DM notifications
+- [ ] Rule database (rule IDs in cases)
 - [ ] Web dashboard

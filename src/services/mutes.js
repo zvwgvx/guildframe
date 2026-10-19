@@ -1,20 +1,18 @@
-// Nghiệp vụ mute: quản lý role Muted + overwrite từng kênh, gán/gỡ role, tạo case, hẹn giờ.
+// Mute business logic: manages the Muted role + per-channel overwrites, role assign/remove, cases, timers.
 import { ChannelType } from 'discord.js';
-import { config } from '../config.js';
-import { createCase, deactivateCase, deactivateCases, getActiveCases, getGuildConfig, hideCase, updateGuildConfig } from '../db.js';
-import { buildCaseEmbed } from '../utils/embeds.js';
+import { config, updateFileConfig } from '../config.js';
+import { createCase, getActiveCases, hideCase, setActiveCasesStatus, setCaseStatus } from '../db.js';
 import { logCase } from './log.js';
 import { cancelCaseTimer, scheduleCase } from './scheduler.js';
 
-// Tìm hoặc tạo role Muted. Trả về role (hoặc null nếu createIfMissing = false).
-export async function ensureMuteRole(guild, { createIfMissing = true, reason = 'Thiết lập role mute' } = {}) {
-  const cfg = getGuildConfig(guild.id);
-  let role = cfg.mute_role_id ? await guild.roles.fetch(cfg.mute_role_id).catch(() => null) : null;
+// Finds or creates the Muted role (config.muteRoleId takes priority; the created role id is persisted).
+export async function ensureMuteRole(guild, { createIfMissing = true, reason = 'Mute role setup' } = {}) {
+  let role = config.muteRoleId ? await guild.roles.fetch(config.muteRoleId).catch(() => null) : null;
 
   if (!role) {
     role =
       guild.roles.cache.find(
-        (r) => !r.managed && r.name.toLowerCase() === config.muteRoleName.toLowerCase(),
+        (r) => !r.managed && r.name.toLowerCase() === String(config.muteRoleName).toLowerCase(),
       ) ?? null;
   }
   if (!role && !createIfMissing) return null;
@@ -27,12 +25,16 @@ export async function ensureMuteRole(guild, { createIfMissing = true, reason = '
       permissions: [],
       reason,
     });
+    console.log(`[mute] Created the "${role.name}" role (${role.id}).`);
   }
-  if (cfg.mute_role_id !== role.id) updateGuildConfig(guild.id, { mute_role_id: role.id });
+  if (config.muteRoleId !== role.id) {
+    updateFileConfig({ muteRoleId: role.id });
+    console.log(`[mute] Saved muteRoleId=${role.id} to config.json.`);
+  }
   return role;
 }
 
-// Overwrite cho role mute trên 1 kênh cụ thể.
+// Channel overwrite applied to every channel for the Muted role.
 export function muteOverwriteOptions(channel) {
   if (channel.isVoiceBased()) return { Speak: false, Stream: false };
   return {
@@ -45,11 +47,11 @@ export function muteOverwriteOptions(channel) {
   };
 }
 
-export async function applyMuteOverwrite(channel, role, reason = 'Thiết lập miễn nhiễm kênh cho role mute') {
+export async function applyMuteOverwrite(channel, role, reason = 'Apply Muted role restrictions') {
   await channel.permissionOverwrites.edit(role, muteOverwriteOptions(channel), { reason });
 }
 
-// Áp overwrite cho toàn bộ kênh hiện có (bỏ qua category). Trả về thống kê.
+// Applies the overwrite to every existing channel (categories are skipped).
 export async function applyMuteOverwritesAll(guild, role) {
   let ok = 0;
   let failed = 0;
@@ -65,7 +67,7 @@ export async function applyMuteOverwritesAll(guild, role) {
   return { ok, failed };
 }
 
-// Áp mute: gán role + tạo case + log + hẹn giờ (nếu có thời hạn).
+// Applies a mute: assigns the role, creates the case, logs it and schedules the timer.
 export async function applyMute(guild, member, { moderatorId, reason = null, durationMs = null, clientId = null }) {
   const role = await ensureMuteRole(guild);
   const caseRow = createCase({
@@ -77,9 +79,9 @@ export async function applyMute(guild, member, { moderatorId, reason = null, dur
     durationMs,
   });
   try {
-    await member.roles.add(role, `Mute — Case #${caseRow.case_number}${reason ? ` | ${reason}` : ''}`);
+    await member.roles.add(role, `Mute - Case #${caseRow.case_number}${reason ? ` | ${reason}` : ''}`);
   } catch (err) {
-    deactivateCase(caseRow.id);
+    setCaseStatus(caseRow.id, 'removed');
     hideCase(caseRow.id);
     throw err;
   }
@@ -88,21 +90,20 @@ export async function applyMute(guild, member, { moderatorId, reason = null, dur
   return { caseRow, role };
 }
 
-// Gỡ mute: xoá role + đóng case mute + tạo case unmute + log.
-// Trả về case unmute, hoặc null nếu không có gì để làm.
+// Removes a mute: takes the role away, closes active mute cases, creates the unmute case.
+// Returns the unmute case, or null when there is nothing to do.
 export async function removeMute(guild, { userId, member = null, moderatorId, reason = null, clientId = null }) {
-  const cfg = getGuildConfig(guild.id);
   const activeMutes = getActiveCases(guild.id, userId, 'mute');
-  const hasRole = Boolean(cfg.mute_role_id && member?.roles?.cache?.has(cfg.mute_role_id));
+  const hasRole = Boolean(config.muteRoleId && member?.roles?.cache?.has(config.muteRoleId));
   if (!activeMutes.length && !hasRole) return null;
 
   for (const c of activeMutes) cancelCaseTimer(c.id);
-  deactivateCases(guild.id, userId, 'mute');
+  setActiveCasesStatus(guild.id, userId, 'mute', 'removed');
 
-  if (member && cfg.mute_role_id && member.roles.cache.has(cfg.mute_role_id)) {
+  if (member && config.muteRoleId && member.roles.cache.has(config.muteRoleId)) {
     await member.roles
-      .remove(cfg.mute_role_id, `Unmute${reason ? ` | ${reason}` : ''}`)
-      .catch((err) => console.error(`[mute] Không gỡ được role cho ${userId}:`, err.message));
+      .remove(config.muteRoleId, `Unmute${reason ? ` | ${reason}` : ''}`)
+      .catch((err) => console.error(`[mute] Failed to remove the Muted role from ${userId}:`, err.message));
   }
 
   const caseRow = createCase({

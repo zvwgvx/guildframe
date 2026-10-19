@@ -1,10 +1,11 @@
-// Scheduler cho temp mute / temp ban: hẹn giờ từ DB, khôi phục lại sau khi bot restart.
+// Timer scheduler for temporary mutes/bans. Restores pending timers from the database on boot.
+import { config } from '../config.js';
 import { COLORS } from '../constants.js';
-import { deactivateCase, getActiveTempCases, getCaseById, getGuildConfig } from '../db.js';
+import { getActiveTempCases, getCaseById, setCaseStatus } from '../db.js';
 import { buildAuditEmbed } from '../utils/embeds.js';
 import { sendModLog } from './log.js';
 
-const MAX_TIMEOUT = 2 ** 31 - 1; // giới hạn của setTimeout (~24.8 ngày)
+const MAX_TIMEOUT = 2 ** 31 - 1; // setTimeout limit (~24.8 days)
 let client = null;
 const timers = new Map(); // caseId -> Timeout
 
@@ -12,15 +13,15 @@ export function initScheduler(c) {
   client = c;
   const rows = getActiveTempCases();
   for (const row of rows) arm(row.id);
-  if (rows.length) console.log(`[scheduler] Đã nạp ${rows.length} timer (temp mute/ban).`);
+  if (rows.length) console.log(`[scheduler] Restored ${rows.length} temporary case timer(s).`);
 }
 
 export const scheduleCase = (caseId) => arm(caseId);
 
 export function cancelCaseTimer(caseId) {
-  const t = timers.get(caseId);
-  if (t) {
-    clearTimeout(t);
+  const timer = timers.get(caseId);
+  if (timer) {
+    clearTimeout(timer);
     timers.delete(caseId);
   }
 }
@@ -28,18 +29,18 @@ export function cancelCaseTimer(caseId) {
 function arm(caseId) {
   cancelCaseTimer(caseId);
   const row = getCaseById(caseId);
-  if (!row || !row.active || !row.expires_at || !['mute', 'ban'].includes(row.type)) return;
+  if (!row || row.status !== 'active' || !row.expires_at || !['mute', 'ban'].includes(row.type)) return;
 
   const delay = row.expires_at - Date.now();
   const wait = Math.max(Math.min(delay, MAX_TIMEOUT), 1);
   const timer = setTimeout(() => {
     timers.delete(caseId);
     if (delay > MAX_TIMEOUT) {
-      arm(caseId); // hẹn lại nếu còn xa hơn giới hạn setTimeout
+      arm(caseId); // re-arm for very long durations
       return;
     }
     handleExpiry(caseId).catch((err) =>
-      console.error(`[scheduler] Lỗi xử lý hết hạn case #${row.case_number}:`, err),
+      console.error(`[scheduler] Failed to process expiry of case #${row.case_number}:`, err),
     );
   }, wait);
   timers.set(caseId, timer);
@@ -47,35 +48,32 @@ function arm(caseId) {
 
 async function handleExpiry(caseId) {
   const row = getCaseById(caseId);
-  if (!row || !row.active) return;
+  if (!row || row.status !== 'active') return;
 
   const guild = client?.guilds?.cache?.get(row.guild_id);
   if (!guild) {
-    deactivateCase(caseId);
+    setCaseStatus(caseId, 'expired');
     return;
   }
-  const cfg = getGuildConfig(row.guild_id);
   let note = '';
 
   if (row.type === 'mute') {
     const member = await guild.members.fetch(row.user_id).catch(() => null);
     if (member) {
-      if (cfg.mute_role_id && member.roles.cache.has(cfg.mute_role_id)) {
-        await member.roles
-          .remove(cfg.mute_role_id, `Hết hạn mute — Case #${row.case_number}`)
-          .catch((err) => {
-            note = ` (không gỡ được role: ${err.message})`;
-          });
+      if (config.muteRoleId && member.roles.cache.has(config.muteRoleId)) {
+        await member.roles.remove(config.muteRoleId, `Mute expired - Case #${row.case_number}`).catch((err) => {
+          note = ` (failed to remove role: ${err.message})`;
+        });
       }
     } else {
-      note = ' (thành viên đã rời server)';
+      note = ' (member left the server)';
     }
-    deactivateCase(caseId);
+    setCaseStatus(caseId, 'expired');
     await sendModLog(
       guild,
       buildAuditEmbed({
-        title: `⌛ Hết hạn mute — Case #${row.case_number}`,
-        description: `Đã tự động gỡ mute cho <@${row.user_id}>.${note}`,
+        title: `Mute Expired - Case #${row.case_number}`,
+        description: `Automatically removed the mute for <@${row.user_id}>.${note}`,
         color: COLORS.gray,
       }),
     );
@@ -84,16 +82,16 @@ async function handleExpiry(caseId) {
 
   if (row.type === 'ban') {
     try {
-      await guild.bans.remove(row.user_id, `Hết hạn temp ban — Case #${row.case_number}`);
+      await guild.bans.remove(row.user_id, `Ban expired - Case #${row.case_number}`);
     } catch (err) {
       note = ` (${err.message})`;
     }
-    deactivateCase(caseId);
+    setCaseStatus(caseId, 'expired');
     await sendModLog(
       guild,
       buildAuditEmbed({
-        title: `⌛ Hết hạn ban — Case #${row.case_number}`,
-        description: `Đã tự động unban <@${row.user_id}>.${note}`,
+        title: `Ban Expired - Case #${row.case_number}`,
+        description: `Automatically unbanned <@${row.user_id}>.${note}`,
         color: COLORS.gray,
       }),
     );

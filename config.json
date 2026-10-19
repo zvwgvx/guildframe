@@ -1,0 +1,16 @@
+{
+  "prefix": "=",
+  "guildId": "",
+  "muteRoleId": "",
+  "muteRoleName": "Muted",
+  "modRoleId": "",
+  "modLogChannelId": "",
+  "doNotType": {
+    "channelId": "",
+    "action": "alert"
+  },
+  "warnEscalation": {
+    "threshold": 0,
+    "duration": "1h"
+  }
+}

@@ -1,14 +1,18 @@
 import { ActivityType, Events } from 'discord.js';
+import { config } from '../config.js';
 import { initScheduler } from '../services/scheduler.js';
 
 export const name = Events.ClientReady;
 export const once = true;
 
 export function execute(client) {
-  console.log(`[bot] Đã đăng nhập: ${client.user.tag} — ${client.guilds.cache.size} server`);
+  console.log(`[bot] Logged in as ${client.user.tag} (${client.guilds.cache.size} guild(s)).`);
+  if (!client.guilds.cache.has(config.guildId)) {
+    console.warn(`[bot] WARNING: the bot is not in the configured guild (${config.guildId}).`);
+  }
   client.user.setPresence({
     status: 'online',
-    activities: [{ name: 'moderation • /setup để bắt đầu', type: ActivityType.Watching }],
+    activities: [{ name: 'moderation', type: ActivityType.Watching }],
   });
   initScheduler(client);
 }

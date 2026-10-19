@@ -2,7 +2,7 @@
   "name": "moderation-bot",
   "version": "1.0.0",
   "private": true,
-  "description": "Discord moderation bot — mute theo role, cảnh cáo, offence count, lịch sử punishment, audit log",
+  "description": "Discord moderation bot - role-based mutes, warnings, offence count, punishment history, audit log",
   "type": "module",
   "main": "src/index.js",
   "engines": {

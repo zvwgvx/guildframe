@@ -1,0 +1,464 @@
+// Prefix command dispatcher. Usage: =mute <target> [duration] [reason]
+import { PermissionsBitField } from 'discord.js';
+import { config } from '../config.js';
+import { HISTORY_PAGE_SIZE, MAX_BAN_MS, MAX_MUTE_MS } from '../constants.js';
+import {
+  countActiveByType,
+  createCase,
+  getActiveCases,
+  getCaseByNumber,
+  hideCase,
+  listCases,
+  offenceBreakdown,
+  setActiveCasesStatus,
+  topOffenders,
+} from '../db.js';
+import { applyWarnEscalation } from '../services/escalation.js';
+import { logCase } from '../services/log.js';
+import { applyMute, removeMute } from '../services/mutes.js';
+import { cancelCaseTimer, scheduleCase } from '../services/scheduler.js';
+import { formatDuration, parseDuration } from '../utils/duration.js';
+import {
+  buildActionEmbed,
+  buildCaseEmbed,
+  buildPunishmentsEmbed,
+  errorEmbed,
+  infoEmbed,
+} from '../utils/embeds.js';
+import { paginateMessage } from '../utils/paginate.js';
+import { canModerateMemberMessage, ensureModeratorMessage } from '../utils/permissions.js';
+
+const ALIASES = {
+  mute: 'mute',
+  unmute: 'unmute',
+  kick: 'kick',
+  ban: 'ban',
+  unban: 'unban',
+  warn: 'warn',
+  history: 'history',
+  puns: 'history',
+  h: 'history',
+  punishments: 'history',
+  offences: 'offences',
+  case: 'case',
+  help: 'help',
+};
+
+const DURATION_TOKEN = /^(?:\d+[smhdw])+$|^perm(?:anent|anently)?$/i;
+const HISTORY_TYPES = ['all', 'warn', 'mute', 'kick', 'ban', 'unmute', 'unban', 'note'];
+
+const looksLikeDuration = (token) => DURATION_TOKEN.test(token);
+
+// Resolves a target from a mention, a raw user ID, or a username. Returns GuildMember | User | null.
+async function resolveTarget(guild, input) {
+  if (!input) return null;
+  const mention = input.match(/^<@!?(\d{17,20})>$/);
+  const id = mention ? mention[1] : /^\d{17,20}$/.test(input) ? input : null;
+
+  if (id) {
+    const member = await guild.members.fetch(id).catch(() => null);
+    if (member) return member;
+    return (await guild.client.users.fetch(id).catch(() => null)) ?? null;
+  }
+
+  const results = await guild.members.fetch({ query: input, limit: 10 }).catch(() => null);
+  if (!results?.size) return null;
+  const lower = input.toLowerCase();
+  return (
+    results.find(
+      (m) => m.user.username.toLowerCase() === lower || (m.user.globalName ?? '').toLowerCase() === lower,
+    ) ?? results.first()
+  );
+}
+
+const isMember = (target) => typeof target?.roles !== 'undefined';
+const toUser = (target) => (isMember(target) ? target.user : target);
+
+function parseDurationArgs(args) {
+  let durationInput = null;
+  let reasonParts = args.slice(1);
+  if (args[1] && looksLikeDuration(args[1])) {
+    durationInput = args[1];
+    reasonParts = args.slice(2);
+  }
+  return { durationInput, reason: reasonParts.join(' ').trim() || null };
+}
+
+// ---------- Commands ----------
+
+async function muteCommand(message, args, client) {
+  if (!ensureModeratorMessage(message, PermissionsBitField.Flags.ManageRoles, 'Manage Roles')) return;
+  if (!message.guild.members.me.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
+    return message.reply({ embeds: [errorEmbed('The bot is missing the **Manage Roles** permission.')] });
+  }
+
+  const target = await resolveTarget(message.guild, args[0]);
+  if (!target) return message.reply({ embeds: [errorEmbed('User not found. Mention them, provide an ID, or type their username.')] });
+  if (!isMember(target)) return message.reply({ embeds: [errorEmbed('That user is not in this server.')] });
+  if (!canModerateMemberMessage(message, target)) return;
+
+  const { durationInput, reason } = parseDurationArgs(args);
+  let durationMs;
+  try {
+    durationMs = parseDuration(durationInput);
+  } catch (err) {
+    return message.reply({ embeds: [errorEmbed(err.message)] });
+  }
+  if (durationMs && durationMs > MAX_MUTE_MS) {
+    return message.reply({ embeds: [errorEmbed(`Maximum mute duration is ${formatDuration(MAX_MUTE_MS)}.`)] });
+  }
+
+  const active = getActiveCases(message.guild.id, target.id, 'mute');
+  if (active.length) {
+    return message.reply({
+      embeds: [errorEmbed(`<@${target.id}> is already muted (Case #${active[0].case_number}). Use \`${config.prefix}unmute\` first.`)],
+    });
+  }
+
+  try {
+    const { caseRow } = await applyMute(message.guild, target, {
+      moderatorId: message.author.id,
+      reason,
+      durationMs,
+      clientId: client.user.id,
+    });
+    await message.reply({
+      embeds: [
+        buildActionEmbed({
+          action: 'mute',
+          target: target.user,
+          durationMs,
+          reason,
+          offenceNo: caseRow.offence_no,
+          guildName: message.guild.name,
+        }),
+      ],
+    });
+  } catch (err) {
+    console.error('[prefix:mute]', err);
+    await message.reply({ embeds: [errorEmbed(`Could not mute: ${err.message}`)] });
+  }
+}
+
+async function unmuteCommand(message, args, client) {
+  if (!ensureModeratorMessage(message, PermissionsBitField.Flags.ManageRoles, 'Manage Roles')) return;
+
+  const target = await resolveTarget(message.guild, args[0]);
+  if (!target) return message.reply({ embeds: [errorEmbed('User not found. Mention them, provide an ID, or type their username.')] });
+
+  const reason = args.slice(1).join(' ').trim() || null;
+  try {
+    const caseRow = await removeMute(message.guild, {
+      userId: target.id,
+      member: isMember(target) ? target : null,
+      moderatorId: message.author.id,
+      reason,
+      clientId: client.user.id,
+    });
+    if (!caseRow) return message.reply({ embeds: [errorEmbed(`<@${target.id}> is not muted.`)] });
+    await message.reply({
+      embeds: [
+        buildActionEmbed({
+          action: 'unmute',
+          target: toUser(target),
+          reason,
+          guildName: message.guild.name,
+        }),
+      ],
+    });
+  } catch (err) {
+    console.error('[prefix:unmute]', err);
+    await message.reply({ embeds: [errorEmbed(`Could not unmute: ${err.message}`)] });
+  }
+}
+
+async function kickCommand(message, args, client) {
+  if (!ensureModeratorMessage(message, PermissionsBitField.Flags.KickMembers, 'Kick Members')) return;
+  if (!message.guild.members.me.permissions.has(PermissionsBitField.Flags.KickMembers)) {
+    return message.reply({ embeds: [errorEmbed('The bot is missing the **Kick Members** permission.')] });
+  }
+
+  const target = await resolveTarget(message.guild, args[0]);
+  if (!target) return message.reply({ embeds: [errorEmbed('User not found. Mention them, provide an ID, or type their username.')] });
+  if (!isMember(target)) return message.reply({ embeds: [errorEmbed('That user is not in this server.')] });
+  if (!canModerateMemberMessage(message, target)) return;
+
+  const reason = args.slice(1).join(' ').trim() || null;
+  const caseRow = createCase({
+    guildId: message.guild.id,
+    userId: target.id,
+    moderatorId: message.author.id,
+    type: 'kick',
+    reason,
+  });
+  try {
+    await target.kick(`Case #${caseRow.case_number} by ${message.author.tag}${reason ? `: ${reason}` : ''}`.slice(0, 512));
+  } catch (err) {
+    hideCase(caseRow.id);
+    return message.reply({ embeds: [errorEmbed(`Could not kick: ${err.message}`)] });
+  }
+  await logCase(message.guild, caseRow, { clientId: client.user.id });
+  await message.reply({
+    embeds: [
+      buildActionEmbed({
+        action: 'kick',
+        target: target.user,
+        reason,
+        offenceNo: caseRow.offence_no,
+        guildName: message.guild.name,
+      }),
+    ],
+  });
+}
+
+async function banCommand(message, args, client) {
+  if (!ensureModeratorMessage(message, PermissionsBitField.Flags.BanMembers, 'Ban Members')) return;
+  if (!message.guild.members.me.permissions.has(PermissionsBitField.Flags.BanMembers)) {
+    return message.reply({ embeds: [errorEmbed('The bot is missing the **Ban Members** permission.')] });
+  }
+
+  const target = await resolveTarget(message.guild, args[0]);
+  if (!target) return message.reply({ embeds: [errorEmbed('User not found. Mention them, provide an ID, or type their username.')] });
+  if (target.id === client.user.id) return message.reply({ embeds: [errorEmbed('I cannot ban myself.')] });
+  if (isMember(target) && !canModerateMemberMessage(message, target)) return;
+
+  const existing = await message.guild.bans.fetch(target.id).catch(() => null);
+  if (existing) return message.reply({ embeds: [errorEmbed(`<@${target.id}> is already banned.`)] });
+
+  const { durationInput, reason } = parseDurationArgs(args);
+  let durationMs;
+  try {
+    durationMs = parseDuration(durationInput);
+  } catch (err) {
+    return message.reply({ embeds: [errorEmbed(err.message)] });
+  }
+  if (durationMs && durationMs > MAX_BAN_MS) {
+    return message.reply({ embeds: [errorEmbed(`Maximum ban duration is ${formatDuration(MAX_BAN_MS)}.`)] });
+  }
+
+  const caseRow = createCase({
+    guildId: message.guild.id,
+    userId: target.id,
+    moderatorId: message.author.id,
+    type: 'ban',
+    reason,
+    durationMs,
+  });
+  try {
+    await message.guild.bans.create(target.id, {
+      deleteMessageSeconds: 0,
+      reason: `Case #${caseRow.case_number} by ${message.author.tag}${reason ? `: ${reason}` : ''}`.slice(0, 512),
+    });
+  } catch (err) {
+    hideCase(caseRow.id);
+    return message.reply({ embeds: [errorEmbed(`Could not ban: ${err.message}`)] });
+  }
+  if (durationMs) scheduleCase(caseRow.id);
+  await logCase(message.guild, caseRow, { clientId: client.user.id });
+  await message.reply({
+    embeds: [
+      buildActionEmbed({
+        action: 'ban',
+        target: toUser(target),
+        durationMs,
+        reason,
+        offenceNo: caseRow.offence_no,
+        guildName: message.guild.name,
+      }),
+    ],
+  });
+}
+
+async function unbanCommand(message, args, client) {
+  if (!ensureModeratorMessage(message, PermissionsBitField.Flags.BanMembers, 'Ban Members')) return;
+
+  const userId = (args[0] ?? '').trim();
+  if (!/^\d{17,20}$/.test(userId)) {
+    return message.reply({ embeds: [errorEmbed(`Usage: \`${config.prefix}unban <user id> [reason]\``)] });
+  }
+  const existing = await message.guild.bans.fetch(userId).catch(() => null);
+  if (!existing) return message.reply({ embeds: [errorEmbed(`<@${userId}> is not banned.`)] });
+
+  const reason = args.slice(1).join(' ').trim() || null;
+  for (const c of getActiveCases(message.guild.id, userId, 'ban')) cancelCaseTimer(c.id);
+  setActiveCasesStatus(message.guild.id, userId, 'ban', 'removed');
+
+  try {
+    await message.guild.bans.remove(
+      userId,
+      `Unban by ${message.author.tag}${reason ? `: ${reason}` : ''}`.slice(0, 512),
+    );
+  } catch (err) {
+    return message.reply({ embeds: [errorEmbed(`Could not unban: ${err.message}`)] });
+  }
+
+  const caseRow = createCase({
+    guildId: message.guild.id,
+    userId,
+    moderatorId: message.author.id,
+    type: 'unban',
+    reason,
+  });
+  await logCase(message.guild, caseRow, { clientId: client.user.id });
+  await message.reply({
+    embeds: [
+      buildActionEmbed({ action: 'unban', target: existing.user, reason, guildName: message.guild.name }),
+    ],
+  });
+}
+
+async function warnCommand(message, args, client) {
+  if (!ensureModeratorMessage(message, PermissionsBitField.Flags.ManageMessages, 'Manage Messages')) return;
+
+  const target = await resolveTarget(message.guild, args[0]);
+  if (!target) return message.reply({ embeds: [errorEmbed('User not found. Mention them, provide an ID, or type their username.')] });
+
+  const reason = args.slice(1).join(' ').trim() || null;
+  const caseRow = createCase({
+    guildId: message.guild.id,
+    userId: target.id,
+    moderatorId: message.author.id,
+    type: 'warn',
+    reason,
+  });
+  await logCase(message.guild, caseRow, { clientId: client.user.id });
+
+  const activeWarns = countActiveByType(message.guild.id, target.id, 'warn');
+  const embed = buildActionEmbed({
+    action: 'warn',
+    target: toUser(target),
+    reason,
+    offenceNo: caseRow.offence_no,
+    guildName: message.guild.name,
+  });
+  embed.addFields({ name: 'Active warnings', value: String(activeWarns), inline: true });
+
+  try {
+    const escalated = await applyWarnEscalation(message.guild, target.id, client);
+    if (escalated) {
+      embed.addFields({
+        name: 'Automatic mute',
+        value: `Reached ${escalated.threshold} warning(s) - mute applied (Case #${escalated.caseRow.case_number}).`,
+      });
+    }
+  } catch (err) {
+    console.error('[prefix:warn] Escalation failed:', err);
+  }
+
+  await message.reply({ embeds: [embed] });
+}
+
+async function historyCommand(message, args, client) {
+  if (!ensureModeratorMessage(message, PermissionsBitField.Flags.ManageMessages, 'Manage Messages')) return;
+
+  const target = await resolveTarget(message.guild, args[0]);
+  if (!target) return message.reply({ embeds: [errorEmbed('User not found. Mention them, provide an ID, or type their username.')] });
+
+  const user = toUser(target);
+  const type = HISTORY_TYPES.includes((args[1] ?? '').toLowerCase()) ? args[1].toLowerCase() : 'all';
+  const { total } = listCases({ guildId: message.guild.id, userId: user.id, type, limit: 1 });
+  if (!total) return message.reply({ embeds: [infoEmbed('Punishments', `No records found for ${user.username}.`)] });
+
+  const totalPages = Math.ceil(total / HISTORY_PAGE_SIZE);
+  const render = (page) =>
+    buildPunishmentsEmbed({
+      user,
+      cases: listCases({
+        guildId: message.guild.id,
+        userId: user.id,
+        type,
+        limit: HISTORY_PAGE_SIZE,
+        offset: page * HISTORY_PAGE_SIZE,
+      }).rows,
+      page,
+      totalPages,
+      total,
+      guildName: message.guild.name,
+      clientId: client.user.id,
+    });
+
+  const sent = await message.reply({ embeds: [render(0)] });
+  await paginateMessage(sent, { totalPages, render, authorId: message.author.id });
+}
+
+async function offencesCommand(message, args, client) {
+  if (!ensureModeratorMessage(message, PermissionsBitField.Flags.ManageMessages, 'Manage Messages')) return;
+
+  if (!args[0]) {
+    const rows = topOffenders(message.guild.id, 10);
+    if (!rows.length) return message.reply({ embeds: [infoEmbed('Offences', 'No offences recorded yet.')] });
+    const medals = ['🥇', '🥈', '🥉'];
+    const lines = rows.map((r, i) => `${medals[i] ?? `**${i + 1}.**`} <@${r.user_id}> - **${r.count}** offence(s)`);
+    return message.reply({ embeds: [infoEmbed('Top 10 offenders', lines.join('\n'))] });
+  }
+
+  const target = await resolveTarget(message.guild, args[0]);
+  if (!target) return message.reply({ embeds: [errorEmbed('User not found. Mention them, provide an ID, or type their username.')] });
+
+  const rows = offenceBreakdown(message.guild.id, target.id);
+  const total = rows.reduce((sum, r) => sum + Number(r.count), 0);
+  const activeWarns = countActiveByType(message.guild.id, target.id, 'warn');
+  const lines = [
+    `**Total offences:** ${total}`,
+    `**Active warnings:** ${activeWarns}`,
+    ...rows.map((r) => `**${r.type}:** ${r.count}`),
+  ];
+  await message.reply({ embeds: [infoEmbed(`Offences - ${toUser(target).username}`, lines.join('\n'))] });
+}
+
+async function caseCommand(message, args, client) {
+  if (!ensureModeratorMessage(message, PermissionsBitField.Flags.ManageMessages, 'Manage Messages')) return;
+
+  const number = Number.parseInt(args[0] ?? '', 10);
+  if (!Number.isInteger(number) || number < 1) {
+    return message.reply({ embeds: [errorEmbed(`Usage: \`${config.prefix}case <number>\``)] });
+  }
+  const caseRow = getCaseByNumber(message.guild.id, number);
+  if (!caseRow || caseRow.hidden) return message.reply({ embeds: [errorEmbed('Case not found.')] });
+  await message.reply({ embeds: [buildCaseEmbed(caseRow, { clientId: client.user.id })] });
+}
+
+function helpCommand(message) {
+  const p = config.prefix;
+  const lines = [
+    `**\`${p}mute\` <user> [duration] [reason]** - mute a member (duration: 5m, 3d, perm)`,
+    `**\`${p}unmute\` <user> [reason]** - remove the mute`,
+    `**\`${p}kick\` <user> [reason]** - kick a member`,
+    `**\`${p}ban\` <user> [duration] [reason]** - ban a member (duration optional)`,
+    `**\`${p}unban\` <user id> [reason]** - remove a ban`,
+    `**\`${p}warn\` <user> [reason]** - warn a member`,
+    `**\`${p}puns\` | \`${p}h\` | \`${p}history\` | \`${p}punishments\` <user> [type]** - punishment history`,
+    `**\`${p}offences\` [user]** - offence count (no user = top 10)`,
+    `**\`${p}case\` <number>** - view a case`,
+  ];
+  return message.reply({ embeds: [infoEmbed('Prefix commands', lines.join('\n'))] });
+}
+
+const HANDLERS = {
+  mute: muteCommand,
+  unmute: unmuteCommand,
+  kick: kickCommand,
+  ban: banCommand,
+  unban: unbanCommand,
+  warn: warnCommand,
+  history: historyCommand,
+  offences: offencesCommand,
+  case: caseCommand,
+  help: helpCommand,
+};
+
+export async function handlePrefixCommand(message, client) {
+  const raw = message.content.slice(config.prefix.length).trim();
+  if (!raw) return;
+
+  const [cmdRaw, ...args] = raw.split(/\s+/);
+  const command = ALIASES[cmdRaw.toLowerCase()];
+  if (!command) return;
+
+  try {
+    await HANDLERS[command](message, args, client);
+  } catch (err) {
+    console.error(`[prefix:${command}]`, err);
+    await message.reply({ embeds: [errorEmbed('Something went wrong while running this command.')] }).catch(() => {});
+  }
+}

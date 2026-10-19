@@ -1,21 +1,18 @@
 import { Events } from 'discord.js';
-import { getGuildConfig } from '../db.js';
+import { config } from '../config.js';
 import { applyMuteOverwrite } from '../services/mutes.js';
 
 export const name = Events.ChannelCreate;
 
-// Kênh mới tạo -> tự áp overwrite chặn cho role Muted (nếu đã cấu hình).
+// Applies the Muted role restrictions to newly created channels.
 export async function execute(channel, client) {
-  if (!channel.guild) return;
+  if (!channel.guild || channel.guild.id !== config.guildId) return;
   try {
-    const cfg = getGuildConfig(channel.guild.id);
-    if (!cfg.mute_role_id) return;
-
-    const role = await channel.guild.roles.fetch(cfg.mute_role_id).catch(() => null);
+    if (!config.muteRoleId) return;
+    const role = await channel.guild.roles.fetch(config.muteRoleId).catch(() => null);
     if (!role) return;
-
-    await applyMuteOverwrite(channel, role, 'Tự động áp dụng cho kênh mới');
+    await applyMuteOverwrite(channel, role, 'Apply Muted role restrictions to new channel');
   } catch (err) {
-    console.error('[channelCreate] Không áp được overwrite mute:', err.message);
+    console.error('[channelCreate] Failed to apply the mute overwrite:', err.message);
   }
 }

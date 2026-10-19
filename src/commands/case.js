@@ -6,19 +6,19 @@ import { ensureModerator } from '../utils/permissions.js';
 
 export const data = new SlashCommandBuilder()
   .setName('case')
-  .setDescription('Xem hoặc xóa một case theo số')
+  .setDescription('View or delete a case by its number')
   .addSubcommand((s) =>
     s
       .setName('view')
-      .setDescription('Xem chi tiết một case')
-      .addIntegerOption((o) => o.setName('number').setDescription('Số case').setRequired(true).setMinValue(1)),
+      .setDescription('View a single case')
+      .addIntegerOption((o) => o.setName('number').setDescription('Case number').setRequired(true).setMinValue(1)),
   )
   .addSubcommand((s) =>
     s
       .setName('delete')
-      .setDescription('Ẩn một case khỏi lịch sử (vẫn giữ audit trail)')
-      .addIntegerOption((o) => o.setName('number').setDescription('Số case').setRequired(true).setMinValue(1))
-      .addStringOption((o) => o.setName('reason').setDescription('Lý do xóa')),
+      .setDescription('Hide a case from the history (audit trail is kept)')
+      .addIntegerOption((o) => o.setName('number').setDescription('Case number').setRequired(true).setMinValue(1))
+      .addStringOption((o) => o.setName('reason').setDescription('Reason for deleting')),
   );
 
 export async function execute(interaction, client) {
@@ -26,11 +26,11 @@ export async function execute(interaction, client) {
   const sub = interaction.options.getSubcommand();
 
   if (sub === 'view') {
-    if (!(await ensureModerator(interaction, PermissionsBitField.Flags.ManageMessages, 'Quản lý tin nhắn'))) return;
+    if (!(await ensureModerator(interaction, PermissionsBitField.Flags.ManageMessages, 'Manage Messages'))) return;
 
     const caseRow = getCaseByNumber(interaction.guildId, interaction.options.getInteger('number'));
     if (!caseRow || caseRow.hidden) {
-      await interaction.editReply({ embeds: [errorEmbed('Case này không tồn tại.')] });
+      await interaction.editReply({ embeds: [errorEmbed('Case not found.')] });
       return;
     }
     await interaction.editReply({ embeds: [buildCaseEmbed(caseRow, { clientId: client.user.id })] });
@@ -38,11 +38,11 @@ export async function execute(interaction, client) {
   }
 
   // delete
-  if (!(await ensureModerator(interaction, PermissionsBitField.Flags.ManageGuild, 'Quản lý server'))) return;
+  if (!(await ensureModerator(interaction, PermissionsBitField.Flags.ManageGuild, 'Manage Server'))) return;
 
   const caseRow = getCaseByNumber(interaction.guildId, interaction.options.getInteger('number'));
   if (!caseRow || caseRow.hidden) {
-    await interaction.editReply({ embeds: [errorEmbed('Case này không tồn tại.')] });
+    await interaction.editReply({ embeds: [errorEmbed('Case not found.')] });
     return;
   }
 
@@ -53,11 +53,9 @@ export async function execute(interaction, client) {
     userId: caseRow.user_id,
     moderatorId: interaction.user.id,
     type: 'note',
-    reason: `Xóa Case #${caseRow.case_number} (${caseRow.type}) khỏi lịch sử${reason ? `: ${reason}` : ''}`,
+    reason: `Deleted Case #${caseRow.case_number} (${caseRow.type})${reason ? `: ${reason}` : ''}`,
   });
   await logCase(interaction.guild, noteCase, { clientId: client.user.id });
 
-  await interaction.editReply({
-    embeds: [buildCaseEmbed(noteCase, { clientId: client.user.id })],
-  });
+  await interaction.editReply({ embeds: [buildCaseEmbed(noteCase, { clientId: client.user.id })] });
 }
