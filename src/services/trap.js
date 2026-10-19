@@ -82,3 +82,26 @@ export async function onTrapCaught(message, actionTaken, client) {
   if (actionTaken && actionTaken !== 'alert') bumpTrapStat(guildId, actionTaken);
   await refreshTrapMessage(client).catch((err) => console.error('[trap] Refresh failed:', err.message));
 }
+
+// The do-not-type channel must stay open to everyone - @everyone gets an explicit allow so
+// bots, selfbots and people without any role (no Member yet) can still be caught typing there.
+export function trapEveryoneOptions(channel) {
+  if (channel.isVoiceBased()) return { ViewChannel: true, Connect: true, SendMessages: true };
+  return { ViewChannel: true, SendMessages: true, ReadMessageHistory: true };
+}
+
+export async function applyTrapOpenOverwrite(channel, reason = 'Keep the do-not-type channel open to everyone') {
+  const guild = channel.guild;
+  await channel.permissionOverwrites.edit(guild.roles.everyone, trapEveryoneOptions(channel), { reason });
+
+  // The bot itself keeps posting/refreshing the Warning sticker.
+  const botRole =
+    (config.botRoleId ? guild.roles.cache.get(config.botRoleId) : null) ?? guild.members.me?.roles.highest ?? null;
+  if (botRole) {
+    await channel.permissionOverwrites.edit(
+      botRole,
+      { ViewChannel: true, SendMessages: true, EmbedLinks: true, ReadMessageHistory: true },
+      { reason },
+    );
+  }
+}

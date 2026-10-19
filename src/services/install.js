@@ -8,7 +8,7 @@ import { baseEmbed } from '../utils/embeds.js';
 import { applyMuteOverwritesAll, applyMutedCmdsOverwrite, ensureMuteRole } from './mutes.js';
 import { ensureBotsRole, ensureBotRole, ensureMemberRole } from './roles.js';
 import { STATUS_MESSAGE_KEY, refreshStatusMessage } from './status.js';
-import { TRAP_MESSAGE_KEY, refreshTrapMessage } from './trap.js';
+import { TRAP_MESSAGE_KEY, applyTrapOpenOverwrite, refreshTrapMessage } from './trap.js';
 
 export const MUTED_CMDS_MESSAGE_KEY = 'muted_cmds';
 
@@ -214,6 +214,8 @@ export async function runInstall(client, guild, { installerId = null } = {}) {
         });
       } else {
         const stored = getInstallMessage(guild.id, TRAP_MESSAGE_KEY);
+        // Keep the trap catchable: explicitly open the channel to everyone (incl. role-less users/bots).
+        await applyTrapOpenOverwrite(channel, by);
         const message = await refreshTrapMessage(client);
         results.push({
           label: 'Do-not-type channel',

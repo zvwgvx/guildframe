@@ -1,14 +1,19 @@
 import { Events } from 'discord.js';
 import { config } from '../config.js';
 import { applyMuteOverwrite, applyMutedCmdsOverwrite } from '../services/mutes.js';
+import { applyTrapOpenOverwrite } from '../services/trap.js';
 
 export const name = Events.ChannelCreate;
 
 // Applies the Muted role restrictions to newly created channels.
-// The muted-commands channel is kept open for muted users instead.
+// The muted-commands channel is kept open for muted users instead, and the
+// do-not-type channel stays open to everyone so the trap keeps catching bots.
 export async function execute(channel, client) {
   if (!channel.guild || channel.guild.id !== config.guildId) return;
   try {
+    if (config.doNotType?.channelId && channel.id === config.doNotType.channelId) {
+      await applyTrapOpenOverwrite(channel, 'Keep the do-not-type channel open to everyone');
+    }
     if (!config.muteRoleId) return;
     const role = await channel.guild.roles.fetch(config.muteRoleId).catch(() => null);
     if (!role) return;
