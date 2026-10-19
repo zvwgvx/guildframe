@@ -33,13 +33,20 @@ const staffMention = (caseRow, clientId) =>
 // > **Reason:** Negative Use of Disabilities (Offence #1)
 // > **Staff:** @MaxGamer
 // > **Expires:** in 11 days
+// Collapses newlines (so single-line markdown like "> ..." never breaks) and hard-caps the length
+// so long user input can never overflow an embed description limit.
+export const truncate = (text, max) => {
+  const clean = String(text).replace(/[\r\n]+/g, ' ').trim();
+  return clean.length > max ? `${clean.slice(0, max - 1)}...` : clean;
+};
+
 export function punishmentEntry(caseRow, { clientId = null } = {}) {
   const meta = typeMeta(caseRow);
   const lines = [
     `● **${meta.label}** ( \`#${caseRow.case_number}\` ) | ${rel(caseRow.created_at)}`,
     `> **Status:** ${statusLabel(caseRow)}`,
   ];
-  const reason = caseRow.reason || 'No reason provided';
+  const reason = truncate(caseRow.reason || 'No reason provided', 150);
   const offence = caseRow.offence_no ? ` (Offence #${caseRow.offence_no})` : '';
   lines.push(`> **Reason:** ${reason}${offence}`);
   lines.push(`> **Staff:** ${staffMention(caseRow, clientId)}`);
@@ -98,7 +105,7 @@ export function buildActionEmbed({ action, target, durationMs = null, reason = n
       sentence = `${mention}`;
   }
   const lines = [sentence];
-  if (reason) lines.push(`**Reason:** ${reason}${offenceNo ? ` (Offence #${offenceNo})` : ''}`);
+  if (reason) lines.push(`**Reason:** ${truncate(reason, 300)}${offenceNo ? ` (Offence #${offenceNo})` : ''}`);
   else if (offenceNo) lines.push(`**Offence:** #${offenceNo}`);
 
   const embed = baseEmbed(meta.color)
@@ -119,7 +126,7 @@ export function buildCaseEmbed(caseRow, { clientId = null } = {}) {
     `**User:** <@${caseRow.user_id}>`,
     `**Staff:** ${staffMention(caseRow, clientId)}`,
   ];
-  if (caseRow.reason) lines.push(`**Reason:** ${caseRow.reason}`);
+  if (caseRow.reason) lines.push(`**Reason:** ${truncate(caseRow.reason, 500)}`);
   if (caseRow.offence_no) lines.push(`**Offence:** #${caseRow.offence_no}`);
   if (caseRow.duration_ms) lines.push(`**Duration:** ${formatDuration(caseRow.duration_ms)}`);
   if (caseRow.expires_at) lines.push(`**Expires:** ${ts(caseRow.expires_at, 'F')} (${rel(caseRow.expires_at)})`);

@@ -10,14 +10,13 @@ import {
   getCaseByNumber,
   hideCase,
   listCases,
-  offenceBreakdown,
   setActiveCasesStatus,
-  topOffenders,
 } from '../db.js';
 import { applyWarnEscalation } from '../services/escalation.js';
 import { buildSetupSummaryEmbed, runInstall, runUninstall } from '../services/install.js';
 import { logCase } from '../services/log.js';
 import { applyMute, applyMuteOverwritesAll, ensureMuteRole, removeMute } from '../services/mutes.js';
+import { offencesTopEmbed, offencesUserEmbed } from '../services/offencesView.js';
 import { cancelCaseTimer, scheduleCase } from '../services/scheduler.js';
 import { formatDuration, parseDuration } from '../utils/duration.js';
 import {
@@ -28,6 +27,7 @@ import {
   errorEmbed,
   infoEmbed,
   successEmbed,
+  truncate,
   ts,
 } from '../utils/embeds.js';
 import { paginateMessage } from '../utils/paginate.js';
@@ -405,24 +405,13 @@ async function offencesCommand(message, args, client) {
   if (!ensureModeratorMessage(message, PermissionsBitField.Flags.ManageMessages, 'Manage Messages')) return;
 
   if (!args[0]) {
-    const rows = topOffenders(message.guild.id, 10);
-    if (!rows.length) return message.reply({ embeds: [infoEmbed('Offences', 'No offences recorded yet.')] });
-    const lines = rows.map((r, i) => `**${i + 1}.** <@${r.user_id}> - **${r.count}** offence(s)`);
-    return message.reply({ embeds: [infoEmbed('Top 10 offenders', lines.join('\n'))] });
+    return message.reply({ embeds: [offencesTopEmbed(message.guild.id)] });
   }
 
   const target = await resolveTarget(message.guild, args[0]);
   if (!target) return message.reply({ embeds: [errorEmbed('User not found. Mention them, provide an ID, or type their username.')] });
 
-  const rows = offenceBreakdown(message.guild.id, target.id);
-  const total = rows.reduce((sum, r) => sum + Number(r.count), 0);
-  const activeWarns = countActiveByType(message.guild.id, target.id, 'warn');
-  const lines = [
-    `**Total offences:** ${total}`,
-    `**Active warnings:** ${activeWarns}`,
-    ...rows.map((r) => `**${r.type}:** ${r.count}`),
-  ];
-  await message.reply({ embeds: [infoEmbed(`Offences - ${toUser(target).username}`, lines.join('\n'))] });
+  await message.reply({ embeds: [offencesUserEmbed(message.guild.id, toUser(target))] });
 }
 
 async function caseCommand(message, args, client) {
@@ -498,7 +487,7 @@ async function warningsCommand(message, args, client) {
       });
       const lines = rows.map((r) => {
         const status = r.status === 'active' ? 'Active' : 'Cleared';
-        const reason = (r.reason || 'No reason provided').slice(0, 120);
+        const reason = truncate(r.reason || 'No reason provided', 120);
         return `**#${r.case_number}** • ${ts(r.created_at, 'R')} • ${status} • by <@${r.moderator_id}>\n> ${reason}`;
       });
       return baseEmbed()

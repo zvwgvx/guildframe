@@ -4,7 +4,7 @@ import { createCase, hideCase } from '../db.js';
 import { applyMute } from '../services/mutes.js';
 import { logCase, sendModLog } from '../services/log.js';
 import { onTrapCaught } from '../services/trap.js';
-import { buildAuditEmbed } from '../utils/embeds.js';
+import { buildAuditEmbed, truncate } from '../utils/embeds.js';
 
 // Handles messages posted in the "do not type" channel (used to catch bots/selfbots).
 // config.doNotType.action: "alert" (default) | "mute" | "kick" | "ban".
@@ -18,7 +18,7 @@ export async function handleDoNotType(message, client) {
     { name: 'Author', value: `${message.author} (${message.author.id})`, inline: true },
     { name: 'Channel', value: `<#${message.channelId}>`, inline: true },
   ];
-  const preview = message.content ? `> ${message.content.slice(0, 500)}` : '(no text content)';
+  const preview = message.content ? `> ${truncate(message.content, 500)}` : '(no text content)';
   const description = [
     `<@${message.author.id}> posted a message in the do-not-type channel.`,
     preview,

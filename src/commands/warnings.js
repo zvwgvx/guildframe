@@ -2,7 +2,7 @@ import { MessageFlags, PermissionsBitField, SlashCommandBuilder } from 'discord.
 import { WARNINGS_PAGE_SIZE } from '../constants.js';
 import { countActiveByType, createCase, setActiveCasesStatus, listCases } from '../db.js';
 import { logCase } from '../services/log.js';
-import { baseEmbed, buildCaseEmbed, infoEmbed, ts } from '../utils/embeds.js';
+import { baseEmbed, buildCaseEmbed, infoEmbed, truncate, ts } from '../utils/embeds.js';
 import { paginateInteraction } from '../utils/paginate.js';
 import { ensureModerator } from '../utils/permissions.js';
 
@@ -55,7 +55,7 @@ async function handleList(interaction) {
       });
       const lines = rows.map((r) => {
         const status = r.status === 'active' ? 'Active' : 'Cleared';
-        const reason = (r.reason || 'No reason provided').slice(0, 120);
+        const reason = truncate(r.reason || 'No reason provided', 120);
         return `**#${r.case_number}** • ${ts(r.created_at, 'R')} • ${status} • by <@${r.moderator_id}>\n> ${reason}`;
       });
       return baseEmbed()
