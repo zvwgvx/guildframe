@@ -439,7 +439,35 @@ export async function runInstall(client, guild, { installerId = null } = {}) {
     }
   }
 
-  // 12. Channel restrictions everywhere else
+  // 12. Welcome channel (card posted on every human join)
+  if (!config.welcome?.channelId) {
+    results.push({
+      label: 'Welcome channel',
+      status: 'Not set',
+      detail: 'Add `welcome.channelId` to post a welcome card when a member joins.',
+    });
+  } else {
+    try {
+      const welcome = await guild.channels.fetch(config.welcome.channelId).catch(() => null);
+      if (!welcome || !welcome.isTextBased()) {
+        results.push({
+          label: 'Welcome channel',
+          status: 'Failed',
+          detail: 'Channel not found or not text-based. Check `welcome.channelId`.',
+        });
+      } else {
+        results.push({
+          label: 'Welcome channel',
+          status: 'OK',
+          detail: `<#${welcome.id}> - new members get a mention, a welcome card (rules reminder, user ID, join date, member count) and their avatar shown.`,
+        });
+      }
+    } catch (err) {
+      results.push({ label: 'Welcome channel', status: 'Failed', detail: err.message });
+    }
+  }
+
+  // 13. Channel restrictions everywhere else
   if (muteRole) {
     try {
       const { ok, failed } = await applyMuteOverwritesAll(guild, muteRole);
@@ -455,7 +483,7 @@ export async function runInstall(client, guild, { installerId = null } = {}) {
     }
   }
 
-  // 12. Best-effort ordering (top to bottom): muted > member > bots > bot (visible) > perms (hidden).
+  // 13. Best-effort ordering (top to bottom): muted > member > bots > bot (visible) > perms (hidden).
   // With Administrator the bot ignores role positions, so the perms role can rest at the very bottom.
   if (permsRole && memberRole && botsRole && botRole && muteRole) {
     const desired = [muteRole, memberRole, botsRole, botRole, permsRole];

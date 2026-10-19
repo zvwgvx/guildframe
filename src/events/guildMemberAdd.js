@@ -4,6 +4,7 @@ import { COLORS } from '../constants.js';
 import { getActiveCases } from '../db.js';
 import { ensureMuteRole } from '../services/mutes.js';
 import { sendModLog } from '../services/log.js';
+import { sendWelcome } from '../services/welcome.js';
 import { buildAuditEmbed } from '../utils/embeds.js';
 
 export const name = Events.GuildMemberAdd;
@@ -22,6 +23,9 @@ export async function execute(member, client) {
       .add(config.memberRoleId, 'Member role on join')
       .catch((err) => console.error('[guildMemberAdd] Failed to add the member role:', err.message));
   }
+
+  // Welcome card in the configured welcome channel (human members only).
+  await sendWelcome(member);
 
   try {
     const actives = getActiveCases(member.guild.id, member.id, 'mute');

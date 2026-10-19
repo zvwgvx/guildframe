@@ -25,6 +25,7 @@ Discord moderation bot with **role-based mutes**, **warnings + offence count**, 
 | Server stats | A live **Server Report** card in `serverStatsChannelId`: Members (All / Humans / Bots), Online (live counts - needs the Presence Intent) and Server (Boosts, Channels, Roles, Created date). Optionally keeps a voice channel (`serverStatsVoiceChannelId`) automatically renamed to `All Members: N` (throttled to Discord's 2-renames/10-minutes limit). |
 | Tickets | One-button panel in `tickets.panelChannelId` (basic text, no command list). Pressing **Open Ticket** creates a text channel in the same category, visible only to the opener and `tickets.staffRoleId`. The opener is welcomed with a **Ticket** card, the opener and staff role are mentioned and the only button is **Close Ticket**. `rename` / `add` / `remove` are ticket-staff only; `close` also works for the owner. One open ticket per user. |
 | Create Voice | A lobby voice channel (`createVoice.lobbyChannelId`) that spawns a personal voice channel on join, in the same category. The room is named after the joiner with a per-guild sequence number (`<username>'s VC · 01`) and the owner gets full control through a panel in its text chat: **Rename Room** (modal dialog) and **Set Private/Set Public** for locking or opening the room, a **User Limit** select and an **Invite a member** select that grants access, announces it in the room chat and **DMs a direct invite link** to the invited user (the room owner kicks people with Discord's built-in voice controls). Ownership passes to the first remaining member when the owner leaves; the channel is deleted when it empties. Needs the `GuildVoiceStates` intent (enabled in the code, not privileged). |
+| Welcome | Every human join posts a card in `welcome.channelId`: a mention line ("Welcome to \<server\>!"), an embed with the username heading, a rules reminder, a details block (user ID, auto-assigned role, join date) and the new member count in the footer, with the member's avatar as the thumbnail. Bots are not welcomed. |
 | Install / Uninstall | `/install` checks every configured role/channel, applies the setup and posts/refreshes the setup messages (overwrites existing ones). `/uninstall` deletes those messages again. |
 
 ## Requirements
@@ -77,6 +78,9 @@ CLIENT_ID=__REDACTED__
   },
   "createVoice": {
     "lobbyChannelId": ""           // voice channel users join to spawn a personal voice channel
+  },
+  "welcome": {
+    "channelId": ""                // welcome card posted here when a human member joins
   },
   "warnEscalation": {
     "threshold": 0,               // active warnings needed to auto-mute (0 = off)
@@ -255,6 +259,11 @@ Note: inside the muted-commands channel, muted users can run `/history` / `/puni
 - When the owner leaves, ownership transfers to the first remaining member and the panel re-renders. When the channel empties, it is **deleted automatically** and its row is removed from the `voice_channels` table.
 - Requires the `GuildVoiceStates` gateway intent - included in the code and not privileged, no Developer Portal change needed.
 
+### Welcome channel
+
+- `welcome.channelId` receives a card on every human join (bots are skipped): a mention line - `<@member>, Welcome to <server>!` - followed by the embed: green accent, **Welcome, \<username\>** heading, "Please read the rules and enjoy your stay.", a `Details` block with the `User ID` (mono), the auto-assigned role and the join date (`<t:F>` with a relative suffix), and the footer "We now have N members!" with the server icon.
+- The member's avatar appears as the embed thumbnail. The Member role is assigned on join before the card is posted (existing behavior).
+
 ### Bot status channel
 
 - The bot keeps a **Status Report** card (Components V2, `[ • ]` section style, no emoji) in `botStatusChannelId` and edits it every minute:
@@ -292,6 +301,7 @@ src/
 │   ├── serverstats.js     # server stats card (Members / Online / Server) + All-Members voice sync
 │   ├── tickets.js         # ticket system (panel, open/rename/add/remove/close)
 │   ├── createvoice.js     # create-voice lobby (spawn personal VC, privacy/limit/invite panel)
+│   ├── welcome.js         # welcome card posted when a human member joins
 │   ├── trap.js           # do-not-type Warning message + counters
 │   ├── scheduler.js      # temp mute/ban timers (restored on boot)
 │   ├── escalation.js     # auto-mute on warning threshold

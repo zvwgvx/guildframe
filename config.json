@@ -24,6 +24,9 @@
   "createVoice": {
     "lobbyChannelId": "1544271355208269824"
   },
+  "welcome": {
+    "channelId": ""
+  },
   "doNotType": {
     "channelId": "1561667318046662766",
     "action": "kick",
