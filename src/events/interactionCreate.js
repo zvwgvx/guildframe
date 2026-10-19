@@ -1,7 +1,8 @@
 import { Events, MessageFlags } from 'discord.js';
 import { config } from '../config.js';
-import { errorEmbed } from '../utils/embeds.js';
+import { errorEmbed, successEmbed } from '../utils/embeds.js';
 import { isConfiguredGuild } from '../utils/permissions.js';
+import { TICKET_BUTTON_ID, openTicket } from '../services/tickets.js';
 
 export const name = Events.InteractionCreate;
 
@@ -20,6 +21,17 @@ export async function execute(interaction, client) {
         })
         .catch(() => {});
     }
+    return;
+  }
+
+  // The single "Open Ticket" button on the ticket panel.
+  if (interaction.isButton() && interaction.customId === TICKET_BUTTON_ID) {
+    const result = await openTicket(interaction, client).catch((err) => {
+      console.error('[tickets] Open failed:', err.message);
+      return { error: 'Opening the ticket failed. Try again in a moment.' };
+    });
+    const embed = result?.error ? errorEmbed(result.error) : successEmbed(`Ticket created: <#${result.channel.id}>`);
+    await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral }).catch(() => {});
     return;
   }
 

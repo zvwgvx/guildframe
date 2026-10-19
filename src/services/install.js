@@ -10,6 +10,7 @@ import { ensureBotsRole, ensureBotPermsRole, ensureBotRole, ensureMemberRole } f
 import { STATUS_MESSAGE_KEY, refreshStatusMessage } from './status.js';
 import { SERVER_STATS_MESSAGE_KEY, refreshServerStatsMessage } from './serverstats.js';
 import { TRAP_MESSAGE_KEY, applyTrapOpenOverwrite, refreshTrapMessage } from './trap.js';
+import { TICKET_PANEL_MESSAGE_KEY, refreshTicketPanelMessage } from './tickets.js';
 
 export const MUTED_CMDS_MESSAGE_KEY = 'muted_cmds';
 
@@ -18,6 +19,7 @@ export const INSTALL_MESSAGE_LABELS = {
   [MUTED_CMDS_MESSAGE_KEY]: 'Muted-commands notice',
   [STATUS_MESSAGE_KEY]: 'Bot status message',
   [SERVER_STATS_MESSAGE_KEY]: 'Server stats message',
+  [TICKET_PANEL_MESSAGE_KEY]: 'Ticket panel message',
 };
 
 // ---------- Muted-commands notice ----------
@@ -375,7 +377,41 @@ export async function runInstall(client, guild, { installerId = null } = {}) {
     }
   }
 
-  // 10. Channel restrictions everywhere else
+  // 10. Ticket panel (single Open-Ticket button; tickets spawn in the same category)
+  if (!config.tickets?.panelChannelId) {
+    results.push({
+      label: 'Ticket panel',
+      status: 'Not set',
+      detail: 'Add `tickets.panelChannelId` to config.json to publish the Open-Ticket button.',
+    });
+  } else {
+    try {
+      const channel = await guild.channels.fetch(config.tickets.panelChannelId).catch(() => null);
+      if (!channel || !channel.isTextBased()) {
+        results.push({
+          label: 'Ticket panel',
+          status: 'Failed',
+          detail: 'Channel not found or not text-based. Check `tickets.panelChannelId`.',
+        });
+      } else {
+        const stored = getInstallMessage(guild.id, TICKET_PANEL_MESSAGE_KEY);
+        const message = await refreshTicketPanelMessage(client);
+        results.push({
+          label: 'Ticket panel',
+          status: message ? (stored ? 'Updated' : 'Created') : 'Failed',
+          detail: message
+            ? `<#${channel.id}> - Open-Ticket button ${stored ? 'refreshed' : 'posted'}; tickets open in the same category, visible to the opener${
+                config.tickets.staffRoleId ? ` and <@&${config.tickets.staffRoleId}>` : ''
+              } only (category is taken from this channel)`
+            : 'Could not post the ticket panel (check permissions).',
+        });
+      }
+    } catch (err) {
+      results.push({ label: 'Ticket panel', status: 'Failed', detail: err.message });
+    }
+  }
+
+  // 11. Channel restrictions everywhere else
   if (muteRole) {
     try {
       const { ok, failed } = await applyMuteOverwritesAll(guild, muteRole);

@@ -23,6 +23,7 @@ Discord moderation bot with **role-based mutes**, **warnings + offence count**, 
 | Roles | `/install` creates the whole role stack: **Muted** (above Member, hidden look), **Member**, **Bots** and the visible bot identity role - both below Member with stripped permissions - plus the hidden **Bot Perms** role (`Administrator`). |
 | Bot status | A live **Status Report** card (Components V2) in `botStatusChannelId`: Bot Status (CPU cores/usage, memory, uptime), Environment (Node.js / discord.js / platform / bot version) and Websocket (ping, shards, state). Refreshed every minute. |
 | Server stats | A live **Server Report** card in `serverStatsChannelId`: Members (All / Humans / Bots), Online (live counts - needs the Presence Intent) and Server (Boosts, Channels, Roles, Created date). Optionally keeps a voice channel (`serverStatsVoiceChannelId`) automatically renamed to `All Members: N` (throttled to Discord's 2-renames/10-minutes limit). |
+| Tickets | One-button panel in `tickets.panelChannelId`. Pressing **Open Ticket** creates a text channel in the same category, visible only to the opener and `tickets.staffRoleId`. Inside: `/rename`, `/close [note]` (channel is removed after closing, note is logged to the mod log), `/add user|role`, `/remove user|role`. One open ticket per user; every slash command has a prefix twin (`=rename`, `=close`, `=add`, `=remove`). |
 | Install / Uninstall | `/install` checks every configured role/channel, applies the setup and posts/refreshes the setup messages (overwrites existing ones). `/uninstall` deletes those messages again. |
 
 ## Requirements
@@ -68,6 +69,10 @@ CLIENT_ID=__REDACTED__
     "action": "kick",             // kick (default) | alert | mute | ban
     "purgeMinutes": 30            // wipe the kicked user's messages from the last N minutes (0 = off)
   },
+  },
+  "tickets": {
+    "panelChannelId": "",          // channel hosting the Open-Ticket button; tickets open in its category
+    "staffRoleId": ""              // role that can see and manage every ticket
   },
   "warnEscalation": {
     "threshold": 0,               // active warnings needed to auto-mute (0 = off)
@@ -131,6 +136,10 @@ Checks every configured role/channel, creates the role stack (Muted, Member, Bot
 | `=puns` / `=h` / `=history` / `=punishments <user> [type]` | Punishment history with page buttons. |
 | `=offences [user]` | Offence count (no user = top 10). |
 | `=case <number>` / `=case delete <number> [reason]` | View / hide a case. |
+| `=rename <new name>` | Rename this ticket (in ticket channels). |
+| `=close [note]` | Close this ticket (channel is removed). |
+| `=add <@user|@role>` | Grant ticket access. |
+| `=remove <@user|@role>` | Revoke ticket access. |
 | `=setup` | Create the Muted role + apply channel restrictions. |
 | `=install` | Full setup check: roles, channels, restrictions, setup messages. |
 | `=uninstall` | Delete the setup messages the bot posted in channels. |
@@ -163,6 +172,10 @@ Targets accept a **user ID**, a **mention** (`<@123...>`) or a **username**.
 | `/offences [user]` | Offence count / top 10. |
 | `/case view|delete number:` | View or hide a case. |
 | `/warnings list|clear user:` | Manage warnings. |
+| `/rename name:` | Rename this ticket channel (owner/staff only, in ticket channels). |
+| `/close note:` | Close this ticket - the channel is removed shortly after. |
+| `/add user: / role:` | Grant a user or role access to this ticket. |
+| `/remove user: / role:` | Revoke ticket access. |
 | `/setup` | Create Muted role + apply channel restrictions. |
 | `/install` | Full setup check: roles, channels, restrictions, setup messages. |
 | `/uninstall` | Delete the setup messages the bot posted in channels. |
@@ -216,6 +229,14 @@ Note: inside the muted-commands channel, muted users can run `/history` / `/puni
 - Every caught message is logged to the mod log channel with the author, content preview and a jump link.
 - When the trap action is `kick`, the author is kicked and the bot then **purges every message they sent in the last `purgeMinutes` minutes** (default 30) across all channels and active threads it can manage (needs Manage Messages). The result ("Deleted N message(s) from the last 30 minutes in M channel(s).") is shown in the alert embed's `History cleanup` field.
 
+### Tickets
+
+- `tickets.panelChannelId` hosts the panel: a Components V2 card ("Tickets") with a **single** `Open Ticket` button - no multi-button panel.
+- The button creates `ticket-<username>` as a **text channel in the same category as the panel**, with overwrites: `@everyone` denied, the opener and `tickets.staffRoleId` allowed (view/write/attach/embed). The bot itself keeps access to manage the channel.
+- One open ticket per user - pressing the button again points to the existing channel.
+- Inside the ticket (owner or staff): `/rename` (auto `ticket-` prefix, sanitized), `/add` and `/remove` for users or roles (the owner cannot be removed), `/close [note]`: marks the row closed, announces it, writes a **Ticket Closed** entry to the mod log (with the note) and deletes the channel a few seconds later.
+- Everything is stored in the `tickets` table (owner, status, who closed, note, timestamps).
+
 ### Bot status channel
 
 - The bot keeps a **Status Report** card (Components V2, `[ • ]` section style, no emoji) in `botStatusChannelId` and edits it every minute:
@@ -251,6 +272,7 @@ src/
 │   ├── install.js        # /install + /uninstall (setup checks, setup messages)
 │   ├── status.js          # bot status card (Bot Status / Environment / Websocket)
 │   ├── serverstats.js     # server stats card (Members / Online / Server) + All-Members voice sync
+│   ├── tickets.js         # ticket system (panel, open/rename/add/remove/close)
 │   ├── trap.js           # do-not-type Warning message + counters
 │   ├── scheduler.js      # temp mute/ban timers (restored on boot)
 │   ├── escalation.js     # auto-mute on warning threshold

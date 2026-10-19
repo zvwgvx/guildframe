@@ -48,6 +48,21 @@ CREATE TABLE IF NOT EXISTS install_messages (
   message_id TEXT NOT NULL,
   PRIMARY KEY (guild_id, key)
 );
+
+CREATE TABLE IF NOT EXISTS tickets (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  guild_id    TEXT NOT NULL,
+  channel_id  TEXT NOT NULL,
+  owner_id    TEXT NOT NULL,
+  status      TEXT NOT NULL DEFAULT 'open',
+  closed_by   TEXT,
+  closed_note TEXT,
+  created_at  INTEGER NOT NULL,
+  closed_at   INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_tickets_guild  ON tickets (guild_id, status, owner_id);
+CREATE INDEX IF NOT EXISTS idx_tickets_channel ON tickets (channel_id);
 `);
 
 // Migration from the initial schema (active flag -> status, offence numbering).
@@ -240,3 +255,29 @@ export function setInstallMessage(guildId, key, channelId, messageId) {
 
 export const deleteInstallMessage = (guildId, key) =>
   Number(db.prepare('DELETE FROM install_messages WHERE guild_id = ? AND key = ?').run(guildId, key).changes);
+
+// ---------- Tickets ----------
+
+export function createTicketRow({ guildId, channelId, ownerId, createdAt = Date.now() }) {
+  const info = db
+    .prepare(
+      'INSERT INTO tickets (guild_id, channel_id, owner_id, status, created_at) VALUES (?, ?, ?, \'open\', ?)',
+    )
+    .run(guildId, channelId, ownerId, createdAt);
+  return db.prepare('SELECT * FROM tickets WHERE id = ?').get(Number(info.lastInsertRowid));
+}
+
+export const getOpenTicketByOwner = (guildId, userId) =>
+  db
+    .prepare("SELECT * FROM tickets WHERE guild_id = ? AND owner_id = ? AND status = 'open' ORDER BY id DESC")
+    .get(guildId, userId) ?? null;
+
+export const getTicketByChannel = (guildId, channelId) =>
+  db.prepare('SELECT * FROM tickets WHERE guild_id = ? AND channel_id = ?').get(guildId, channelId) ?? null;
+
+export function closeTicketRow(id, { closedBy, note = null }) {
+  db.prepare(
+    "UPDATE tickets SET status = 'closed', closed_by = ?, closed_note = ?, closed_at = ? WHERE id = ?",
+  ).run(closedBy, note, Date.now(), id);
+  return db.prepare('SELECT * FROM tickets WHERE id = ?').get(id) ?? null;
+}

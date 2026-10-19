@@ -23,6 +23,14 @@ import { logCase } from '../services/log.js';
 import { applyMute, applyMuteOverwritesAll, ensureMuteRole, removeMute } from '../services/mutes.js';
 import { offencesTopEmbed, offencesUserEmbed } from '../services/offencesView.js';
 import { cancelCaseTimer, scheduleCase } from '../services/scheduler.js';
+import {
+  addToTicket,
+  canManageTicket,
+  closeTicket,
+  getTicketForChannel,
+  removeFromTicket,
+  renameTicket,
+} from '../services/tickets.js';
 import { formatDuration, parseDuration } from '../utils/duration.js';
 import {
   baseEmbed,
@@ -55,6 +63,10 @@ const ALIASES = {
   setup: 'setup',
   install: 'install',
   uninstall: 'uninstall',
+  rename: 'rename',
+  close: 'close',
+  add: 'add',
+  remove: 'remove',
   help: 'help',
 };
 
@@ -526,6 +538,97 @@ async function warningsCommand(message, args, client) {
   await message.reply({ embeds: [buildCaseEmbed(caseRow, { clientId: client.user.id })] });
 }
 
+// ---------- Ticket commands (rename / close / add / remove) ----------
+
+// Resolves @user (member is preferred, raw user on fallback) or @role from one token.
+async function resolveTicketTarget(guild, input) {
+  if (!input) return null;
+  const userMatch = input.match(/^<@!?(\d{17,20})>$/) ?? (/^\d{17,20}$/.test(input) ? [null, input] : null);
+  if (userMatch) {
+    const member = await guild.members.fetch(userMatch[1]).catch(() => null);
+    if (member) return member;
+    return (await guild.client.users.fetch(userMatch[1]).catch(() => null)) ?? null;
+  }
+  const roleMatch = input.match(/^<@&(\d{17,20})>$/);
+  if (roleMatch) return (await guild.roles.fetch(roleMatch[1]).catch(() => null)) ?? null;
+  return null;
+}
+
+const ticketGuard = (message) => {
+  const ticket = getTicketForChannel(message.guild.id, message.channelId);
+  if (!ticket) {
+    message.reply({ embeds: [errorEmbed('This channel is not an open ticket.')] });
+    return null;
+  }
+  if (!canManageTicket(ticket, message.member)) {
+    message.reply({ embeds: [errorEmbed('Only the ticket owner or staff can do that in this ticket.')] });
+    return null;
+  }
+  return ticket;
+};
+
+// =rename <new name>
+async function renameCommand(message, args) {
+  const ticket = ticketGuard(message);
+  if (!ticket) return;
+
+  const name = args.join(' ').trim();
+  if (!name) return message.reply({ embeds: [errorEmbed('Usage: `rename <new name>`')] });
+
+  const result = await renameTicket(message.guild, ticket, name, message.member);
+  if (result?.error) return message.reply({ embeds: [errorEmbed(result.error)] });
+  return message.reply({ embeds: [successEmbed('Ticket renamed.', 'Ticket')] });
+}
+
+// =close [note]
+async function closeTicketCommand(message, args, client) {
+  const ticket = ticketGuard(message);
+  if (!ticket) return;
+
+  const note = args.join(' ').trim() || null;
+  const result = await closeTicket(message.guild, ticket, message.member, note, client);
+  if (result?.error) return message.reply({ embeds: [errorEmbed(result.error)] });
+  return message.reply({
+    embeds: [successEmbed('Ticket closed. This channel will be removed shortly.', 'Ticket')],
+  });
+}
+
+// =add <@user|@role>
+async function addTicketCommand(message, args) {
+  const ticket = ticketGuard(message);
+  if (!ticket) return;
+
+  const target = await resolveTicketTarget(message.guild, args[0]);
+  if (!target) return message.reply({ embeds: [errorEmbed('Usage: `add <@user|@role>`')] });
+  if (target.bot) {
+    return message.reply({ embeds: [errorEmbed('Bot accounts cannot be added to tickets.')] });
+  }
+  // Never add a role while a user mention was intended, and never add the @everyone-ish roles.
+  if (target.members && target.id === message.guild.roles.everyone.id) {
+    return message.reply({ embeds: [errorEmbed('Use a specific role - @everyone cannot be added.')] });
+  }
+
+  const result = await addToTicket(message.guild, ticket, target, message.member);
+  if (result?.error) return message.reply({ embeds: [errorEmbed(result.error)] });
+  return message.reply({ embeds: [successEmbed('Access granted.', 'Ticket')] });
+}
+
+// =remove <@user|@role>
+async function removeTicketCommand(message, args) {
+  const ticket = ticketGuard(message);
+  if (!ticket) return;
+
+  const target = await resolveTicketTarget(message.guild, args[0]);
+  if (!target) return message.reply({ embeds: [errorEmbed('Usage: `remove <@user|@role>`')] });
+  if (target.id === ticket.owner_id) {
+    return message.reply({ embeds: [errorEmbed('The ticket owner cannot be removed from their own ticket.')] });
+  }
+
+  const result = await removeFromTicket(message.guild, ticket, target, message.member);
+  if (result?.error) return message.reply({ embeds: [errorEmbed(result.error)] });
+  return message.reply({ embeds: [successEmbed('Access revoked.', 'Ticket')] });
+}
+
 // =setup (mirrors /setup)
 async function setupCommand(message) {
   if (!ensureModeratorMessage(message, PermissionsBitField.Flags.ManageGuild, 'Manage Server')) return;
@@ -604,6 +707,10 @@ function helpCommand(message) {
     `**\`${p}setup\`** - create the Muted role + apply channel restrictions`,
     `**\`${p}install\`** - full setup check (roles, channels, setup messages)`,
     `**\`${p}uninstall\`** - delete the setup messages`,
+    `**\`${p}rename\` <new name>** - rename this ticket (in ticket channels)`,
+    `**\`${p}close\` [note]** - close this ticket (channel is removed)`,
+    `**\`${p}add\` <@user|@role>** - grant ticket access`,
+    `**\`${p}remove\` <@user|@role>** - revoke ticket access`,
   ];
   return message.reply({ embeds: [infoEmbed('Prefix commands', lines.join('\n'))] });
 }
@@ -622,6 +729,10 @@ const HANDLERS = {
   setup: setupCommand,
   install: installCommand,
   uninstall: uninstallCommand,
+  rename: renameCommand,
+  close: closeTicketCommand,
+  add: addTicketCommand,
+  remove: removeTicketCommand,
   help: helpCommand,
 };
 

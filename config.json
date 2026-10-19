@@ -17,6 +17,10 @@
   "botStatusChannelId": "1561666780685013053",
   "serverStatsChannelId": "1561679421314826290",
   "serverStatsVoiceChannelId": "",
+  "tickets": {
+    "panelChannelId": "",
+    "staffRoleId": ""
+  },
   "doNotType": {
     "channelId": "1561667318046662766",
     "action": "kick",
