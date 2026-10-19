@@ -33,7 +33,6 @@ export const CV_RENAME_MODAL_ID = 'cv_rename_modal';
 export const CV_RENAME_INPUT_ID = 'cv_name';
 export const CV_LIMIT_ID = 'cv_limit';
 export const CV_INVITE_ID = 'cv_invite';
-export const CV_KICK_ID = 'cv_kick';
 
 // Invited members may see, join and use the voice chat. Speak is intentionally
 // not force-allowed so a server-wide mute stays effective.
@@ -108,11 +107,7 @@ function buildVoicePanelRows(channel) {
     new UserSelectMenuBuilder().setCustomId(CV_INVITE_ID).setPlaceholder('Invite a member').setMaxValues(5),
   );
 
-  const kick = new ActionRowBuilder().addComponents(
-    new UserSelectMenuBuilder().setCustomId(CV_KICK_ID).setPlaceholder('Remove a member').setMaxValues(5),
-  );
-
-  return [actions, limit, invite, kick];
+  return [actions, limit, invite];
 }
 
 export const buildVoicePanelPayload = (channel, row) => ({
@@ -304,6 +299,7 @@ export async function inviteVoiceMembers(interaction) {
     }
   }
 
+  const dmFailures = [];
   if (invited.length > 0) {
     await channel
       .send({
@@ -315,9 +311,49 @@ export async function inviteVoiceMembers(interaction) {
       })
       .catch(() => {});
     await refreshVoicePanel(channel, row);
+
+    // DM a direct invite link to every person who was invited.
+    let link = null;
+    try {
+      const invite = await channel.createInvite({
+        unique: true,
+        maxAge: 0,
+        maxUses: 0,
+        reason: `Voice room invite sent to ${invited.join(', ')} by ${interaction.member.id}`,
+      });
+      link = `https://discord.gg/${invite.code}`;
+    } catch (err) {
+      console.error('[voice] Invite link creation failed:', err.message);
+    }
+
+    for (const userId of invited) {
+      if (!link) break;
+      const user = await interaction.client.users.fetch(userId).catch(() => null);
+      if (!user) {
+        dmFailures.push(userId);
+        continue;
+      }
+      const dm = baseEmbed(COLORS.info)
+        .setTitle('Voice Room Invite')
+        .setDescription(
+          [
+            `You have been invited by <@${interaction.member.id}> to join the voice room **${channel.name}** in **${interaction.guild.name}**.`,
+            '',
+            `Join: ${link}`,
+          ].join('\n'),
+        )
+        .setFooter({ text: `Invited via the SENTIA voice panel - ${interaction.guild.name}` });
+      const sent = await user.send({ embeds: [dm], allowedMentions: { users: [] } }).catch(() => null);
+      if (!sent) dmFailures.push(userId);
+    }
   }
 
-  return { success: invited.length > 0 ? `Invited ${invited.length} member(s).` : 'No one new was invited.' };
+  let success = invited.length > 0 ? `Invited ${invited.length} member(s).` : 'No one new was invited.';
+  if (dmFailures.length > 0) {
+    success += ` DM delivery failed for ${dmFailures.length} member(s) (they may have DMs closed) - they still received access and the in-channel announcement.`;
+  }
+
+  return { success };
 }
 
 // Opens the rename modal (the submit is handled by applyVoiceRename).
@@ -378,45 +414,4 @@ export async function applyVoiceRename(interaction) {
     .catch(() => {});
   await refreshVoicePanel(channel, row);
   return { success: `Room renamed to ${content}.` };
-}
-
-// Disconnects the selected members from the channel and revokes their access.
-export async function kickVoiceMembers(interaction) {
-  const row = getVoiceRowByChannel(interaction.guildId, interaction.channelId);
-  if (!row) return { error: 'This is not a spawned voice channel.' };
-  if (!canControlVoice(row, interaction.member)) {
-    return { error: 'Only the channel owner or staff can remove members.' };
-  }
-
-  const channel = await interaction.guild.channels.fetch(interaction.channelId).catch(() => null);
-  if (!channel || !channel.isVoiceBased()) return { error: 'This is not a spawned voice channel.' };
-
-  const removed = [];
-  for (const userId of interaction.values) {
-    if (userId === row.owner_id) continue;
-    const member = await interaction.guild.members.fetch(userId).catch(() => null);
-    if (member?.voice?.channelId === channel.id) {
-      await member.voice.setChannel(null, `Removed from voice channel by ${interaction.member.id}`).catch(() => {});
-    }
-    try {
-      await channel.permissionOverwrites.delete(userId, `Removed from voice channel by ${interaction.member.id}`);
-      removed.push(userId);
-    } catch (err) {
-      console.error('[voice] Remove failed:', err.message);
-    }
-  }
-
-  if (removed.length > 0) {
-    await channel
-      .send({
-        embeds: [
-          baseEmbed(COLORS.warn).setDescription(
-            `${removed.map((id) => `<@${id}>`).join(', ')} removed by <@${interaction.member.id}>.`,
-          ),
-        ],
-      })
-      .catch(() => {});
-  }
-
-  return { success: removed.length > 0 ? `Removed ${removed.length} member(s).` : 'No one was removed.' };
 }

@@ -5,14 +5,12 @@ import { isConfiguredGuild } from '../utils/permissions.js';
 import { TICKET_BUTTON_ID, TICKET_CLOSE_BUTTON_ID, canManageTicket, closeTicket, getTicketForChannel, openTicket } from '../services/tickets.js';
 import {
   CV_INVITE_ID,
-  CV_KICK_ID,
   CV_LIMIT_ID,
   CV_PRIVACY_ID,
   CV_RENAME_ID,
   CV_RENAME_MODAL_ID,
   applyVoiceRename,
   inviteVoiceMembers,
-  kickVoiceMembers,
   requestVoiceRename,
   setVoiceLimit,
   toggleVoicePrivacy,
@@ -120,16 +118,6 @@ export async function execute(interaction, client) {
     const result = await inviteVoiceMembers(interaction).catch((err) => {
       console.error('[voice] Invite failed:', err.message);
       return { error: 'Could not invite members. Try again in a moment.' };
-    });
-    const embed = result?.error ? errorEmbed(result.error) : successEmbed(result.success);
-    await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral }).catch(() => {});
-    return;
-  }
-
-  if (interaction.isUserSelectMenu() && interaction.customId === CV_KICK_ID) {
-    const result = await kickVoiceMembers(interaction).catch((err) => {
-      console.error('[voice] Remove failed:', err.message);
-      return { error: 'Could not remove members. Try again in a moment.' };
     });
     const embed = result?.error ? errorEmbed(result.error) : successEmbed(result.success);
     await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral }).catch(() => {});
