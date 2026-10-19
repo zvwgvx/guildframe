@@ -19,7 +19,7 @@ const typeMeta = (caseRow) => TYPE_META[caseRow.type] ?? TYPE_META.note;
 
 const statusLabel = (caseRow) => {
   const status = CASE_STATUS[caseRow.status] ?? CASE_STATUS.removed;
-  return `${status.dot} ${status.label}`;
+  return status.label;
 };
 
 const staffMention = (caseRow, clientId) =>
@@ -29,7 +29,7 @@ const staffMention = (caseRow, clientId) =>
 
 // One punishment block, e.g.:
 // ● **MUTE** ( `#9887` ) | 10 days ago
-// > **Status:** 🟢 Active
+// > **Status:** Active
 // > **Reason:** Negative Use of Disabilities (Offence #1)
 // > **Staff:** @MaxGamer
 // > **Expires:** in 11 days

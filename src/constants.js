@@ -30,9 +30,9 @@ export const TYPE_META = {
 export const OFFENCE_TYPES = ['warn', 'mute', 'kick', 'ban'];
 
 export const CASE_STATUS = {
-  active: { label: 'Active', dot: '🟢' },
-  expired: { label: 'Expired', dot: '⚪' },
-  removed: { label: 'Removed', dot: '⚪' },
+  active: { label: 'Active' },
+  expired: { label: 'Expired' },
+  removed: { label: 'Removed' },
 };
 
 export const MAX_MUTE_MS = 90 * 24 * 60 * 60 * 1000; // 90 days

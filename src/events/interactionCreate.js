@@ -19,7 +19,7 @@ export async function execute(interaction, client) {
   if (interaction.isButton() && interaction.customId.startsWith('trap_stat_')) {
     const key = interaction.customId.replace('trap_stat_', '');
     await interaction
-      .reply({ content: `This is just a counter (${key}). 😉`, flags: MessageFlags.Ephemeral })
+      .reply({ content: 'This counter is display-only.', flags: MessageFlags.Ephemeral })
       .catch(() => {});
     return;
   }

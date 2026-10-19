@@ -54,7 +54,7 @@ async function handleList(interaction) {
         offset: page * WARNINGS_PAGE_SIZE,
       });
       const lines = rows.map((r) => {
-        const status = r.status === 'active' ? '🟢 Active' : '⚪ Cleared';
+        const status = r.status === 'active' ? 'Active' : 'Cleared';
         const reason = (r.reason || 'No reason provided').slice(0, 120);
         return `**#${r.case_number}** • ${ts(r.created_at, 'R')} • ${status} • by <@${r.moderator_id}>\n> ${reason}`;
       });

@@ -387,8 +387,7 @@ async function offencesCommand(message, args, client) {
   if (!args[0]) {
     const rows = topOffenders(message.guild.id, 10);
     if (!rows.length) return message.reply({ embeds: [infoEmbed('Offences', 'No offences recorded yet.')] });
-    const medals = ['🥇', '🥈', '🥉'];
-    const lines = rows.map((r, i) => `${medals[i] ?? `**${i + 1}.**`} <@${r.user_id}> - **${r.count}** offence(s)`);
+    const lines = rows.map((r, i) => `**${i + 1}.** <@${r.user_id}> - **${r.count}** offence(s)`);
     return message.reply({ embeds: [infoEmbed('Top 10 offenders', lines.join('\n'))] });
   }
 

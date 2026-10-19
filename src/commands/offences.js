@@ -59,8 +59,7 @@ async function showTop(interaction) {
     await interaction.editReply({ embeds: [infoEmbed('Offences', 'No offences recorded yet.')] });
     return;
   }
-  const medals = ['🥇', '🥈', '🥉'];
-  const lines = rows.map((r, i) => `${medals[i] ?? `**${i + 1}.**`} <@${r.user_id}> - **${r.count}** offence(s)`);
+  const lines = rows.map((r, i) => `**${i + 1}.** <@${r.user_id}> - **${r.count}** offence(s)`);
   await interaction.editReply({
     embeds: [baseEmbed().setTitle('Top 10 offenders').setDescription(lines.join('\n'))],
   });

@@ -1,5 +1,5 @@
 // Do-not-type trap: keeps a persistent "Warning" message with live counter buttons
-// in the configured channel (style: "⚠️ Warning ⚠️" + caught/muted/kicked/banned counters).
+// in the configured channel (caught/muted/kicked/banned counters, no emoji).
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import { config } from '../config.js';
 import { COLORS } from '../constants.js';
@@ -10,10 +10,10 @@ const ACTION_VERBS = { mute: 'muted', kick: 'kicked', ban: 'banned' };
 
 // Counter buttons (order matters). "caught" is always shown; action counters appear once used.
 const STAT_BUTTONS = [
-  ['caught', '🐸'],
-  ['muted', '🔇'],
-  ['kicked', '👢'],
-  ['banned', '🔨'],
+  ['caught', 'Caught'],
+  ['muted', 'Muted'],
+  ['kicked', 'Kicked'],
+  ['banned', 'Banned'],
 ];
 
 function buildTrapPayload(guild, stats) {
@@ -26,17 +26,16 @@ function buildTrapPayload(guild, stats) {
   lines.push('', 'This channel is used to catch bots that spam our server.');
 
   const embed = baseEmbed(COLORS.warn)
-    .setTitle('⚠️ Warning ⚠️')
+    .setTitle('Warning')
     .setDescription(lines.join('\n'))
     .setFooter({ text: guild.name });
 
   const metrics = STAT_BUTTONS.filter(([key]) => key === 'caught' || (stats[key] ?? 0) > 0);
   const row = new ActionRowBuilder().addComponents(
-    metrics.map(([key, emoji]) =>
+    metrics.map(([key, label]) =>
       new ButtonBuilder()
         .setCustomId(`trap_stat_${key}`)
-        .setEmoji(emoji)
-        .setLabel(String(stats[key] ?? 0))
+        .setLabel(`${label}: ${stats[key] ?? 0}`)
         .setStyle(ButtonStyle.Primary),
     ),
   );
