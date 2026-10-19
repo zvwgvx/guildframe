@@ -1,5 +1,5 @@
 {
-  "name": "modo",
+  "name": "aio-discord-bot",
   "version": "1.0.0",
   "private": true,
   "description": "All-in-one Discord bot - moderation (mutes, warnings, cases, audit log), tickets, dynamic voice rooms, welcome cards and live server stats",
