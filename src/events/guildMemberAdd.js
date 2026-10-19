@@ -12,8 +12,12 @@ export const name = Events.GuildMemberAdd;
 export async function execute(member, client) {
   if (member.guild.id !== config.guildId) return;
 
-  // Member role (humans only).
-  if (config.memberRoleId && !member.user.bot) {
+  // Bots role for bot accounts, Member role for humans.
+  if (member.user.bot && config.botsRoleId) {
+    await member.roles.add(config.botsRoleId, 'Bots role on join').catch((err) =>
+      console.error('[guildMemberAdd] Failed to add the bots role:', err.message),
+    );
+  } else if (config.memberRoleId && !member.user.bot) {
     await member.roles
       .add(config.memberRoleId, 'Member role on join')
       .catch((err) => console.error('[guildMemberAdd] Failed to add the member role:', err.message));

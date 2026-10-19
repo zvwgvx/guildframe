@@ -18,9 +18,9 @@ Discord moderation bot with **role-based mutes**, **warnings + offence count**, 
 | Mod log | Every bot action (including automatic ones) is logged to `modLogChannelId` as a case embed. |
 | Audit log | Ban / unban / kick / timeout / manual Muted-role changes performed directly in Discord are caught via the audit log and logged with the executor. |
 | Temp ban | `/ban user duration:` or `=ban <user> <duration> [reason]` - unbanned automatically on expiry. |
-| Do-not-type trap | Any message posted in `doNotType.channelId` is logged with a mod-role ping. Optionally auto-`mute` / `kick` / `ban` the author (never applied to real bot accounts - alert only). A persistent **Warning** sticker with live counter buttons (Caught / Muted / Kicked / Banned) is kept in the channel automatically. |
+| Do-not-type trap | Any message posted in `doNotType.channelId` is logged with a mod-role ping and the author is auto-**kicked** by default (`action: kick`; alternatives `alert` / `mute` / `ban` - never applied to real bot accounts, those only trigger the alert). A persistent **Warning** sticker with live counter buttons (Caught / Muted / Kicked / Banned) is kept in the channel automatically. |
 | Muted-commands channel | Muted users keep access to `mutedBotCmdsChannelId` so they can still use bot commands there (`=puns` / `/history` on themselves, `=help`). A notice embed is kept in the channel automatically. |
-| Member role | `memberRoleId` (e.g. "Member" / "Verified") is assigned automatically to every human who joins. |
+| Roles | `/install` creates the whole role stack: **Moderation Bot** (the bot's own role, made first so it sits on top), **Bots** (auto-assigned to bot accounts, incl. on join), **Muted** and **Member** (basic view + chat access; restricted categories are configured separately in Discord). |
 | Bot status | A live **Status Report** card (Components V2) in `botStatusChannelId`: Bot Status (CPU cores/usage, memory, uptime), Environment (Node.js / discord.js / platform / bot version) and Websocket (ping, shards, state). Refreshed every minute. |
 | Install / Uninstall | `/install` checks every configured role/channel, applies the setup and posts/refreshes the setup messages (overwrites existing ones). `/uninstall` deletes those messages again. |
 
@@ -50,13 +50,17 @@ CLIENT_ID=__REDACTED__
   "muteRoleName": "Muted",        // name used when the bot creates the role
   "modRoleId": "123...",          // role allowed to use moderation commands
   "modLogChannelId": "123...",    // channel receiving all logs
-  "memberRoleId": "123...",       // Member/Verified role ID (leave empty to auto-create on /install)
+  "memberRoleId": "123...",       // Member role ID (leave empty; /install auto-creates it)
   "memberRoleName": "Member",     // name used when the bot creates the member role
+  "botsRoleId": "123...",         // shared role for bot accounts (auto-created by /install)
+  "botsRoleName": "Bots",         // name used when the bot creates the bots role
+  "botRoleId": "123...",          // this bot's own role (auto-created by /install, place it on top)
+  "botRoleName": "Moderation Bot", // name used when the bot creates its own role
   "mutedBotCmdsChannelId": "123...", // channel muted users can still talk in to use commands
   "botStatusChannelId": "123...", // channel receiving the live "Status Report" card
   "doNotType": {
     "channelId": "123...",        // the "do not type here" channel
-    "action": "alert"             // alert | mute | kick | ban
+    "action": "kick"              // kick (default) | alert | mute | ban
   },
   "warnEscalation": {
     "threshold": 0,               // active warnings needed to auto-mute (0 = off)
@@ -65,7 +69,7 @@ CLIENT_ID=__REDACTED__
 }
 ```
 
-`config.json` is read at startup and **written back** when the bot auto-creates the Muted / Member roles, so `muteRoleId` and `memberRoleId` fill themselves in.
+`config.json` is read at startup and **written back** when the bot auto-creates roles, so `muteRoleId`, `memberRoleId`, `botsRoleId` and `botRoleId` fill themselves in.
 
 ## Setup
 
@@ -84,7 +88,7 @@ https://discord.com/oauth2/authorize?client_id=YOUR_CLIENT_ID&permissions=268520
 
 Includes: View Channels, Send Messages, Embed Links, Read Message History, Manage Roles, Kick Members, Ban Members, View Audit Log.
 
-> Move the bot's role **above** the `Muted` role in Server Settings -> Roles.
+> `/install` creates the `Moderation Bot` role for this purpose (and tries to assign it to the bot). Because Discord does not let a bot assign roles above its own, make sure the bot's role ends up **above** `Bots`, `Muted` and `Member` in Server Settings -> Roles (drag it to the top).
 
 ### 3. Run
 
@@ -102,7 +106,7 @@ npm start
 /install
 ```
 
-Checks every configured role/channel, creates the Muted / Member roles if missing, applies the channel restrictions, posts the setup messages (the Warning sticker in the do-not-type channel, the notice in the muted-commands channel and the live Status Report card in the bot-status channel) and prints a summary embed. The embed includes the server the bot operates in, one status row per role/channel and a final **Report** field listing everything that is not ready yet (`Not set` / `Failed`). Re-running it overwrites/refreshes everything. `/uninstall` deletes the setup messages again.
+Checks every configured role/channel, creates the role stack (Moderation Bot, Bots, Muted, Member) when missing, applies the channel restrictions, posts the setup messages (the Warning sticker in the do-not-type channel, the notice in the muted-commands channel and the live Status Report card in the bot-status channel) and prints a summary embed. The embed includes the server the bot operates in, one status row per role/channel and a final **Report** field listing everything that is not ready yet (`Not set` / `Failed`). Re-running it overwrites/refreshes everything. `/uninstall` deletes the setup messages again.
 
 ## Commands
 
@@ -169,6 +173,14 @@ Note: inside the muted-commands channel, muted users can run `/history` / `/puni
 - `offence_no` counts only warn/mute/kick/ban cases and is shown as `(Offence #N)` next to the reason.
 - `/case delete` sets `hidden = 1` - the case disappears from history but stays in the database.
 
+### Roles
+
+`/install` makes sure these four roles exist (created in this order, which also stacks them):
+1. **Moderation Bot** (`botRoleName`) - the bot's own role; gets `Manage Roles`, `Kick Members`, `Ban Members`, `View Audit Log`. The installer tries to assign it to the bot; afterwards drag it to the top of the role list (Discord forbids a bot from editing roles above its own, so it cannot fully move it itself).
+2. **Bots** (`botsRoleName`) - shared role for bot accounts. Assigned to every bot already in the server during `/install`, and to every bot that joins later.
+3. **Muted** (`muteRoleName`) - no granted permissions; viewing stays intact, chatting is denied via the channel overwrites.
+4. **Member** (`memberRoleName`) - basic access: `View Channels`, `Send Messages`, `Read Message History`. Assigned automatically to every human who joins. Locked-down or restricted categories/channels ("staff only", ...) stay configured by you in Discord - the Member role does not grant anything extra there.
+
 ### Mute
 
 - A role alone cannot remove permissions, so the bot denies `Send Messages`, `Add Reactions`, `Create Threads`, `Speak`, ... via **channel overwrites** for the Muted role (`/install` / `/setup` apply them everywhere; new channels are handled by the `channelCreate` event).
@@ -219,7 +231,7 @@ src/
 │   └── doNotType.js      # do-not-type channel trap
 ├── services/
 │   ├── mutes.js          # Muted role + overwrites + assign/remove
-│   ├── roles.js          # Member/verified role (auto-created, assigned on join)
+│   ├── roles.js           # Member / Bots / Moderation Bot roles (auto-created, assigned on join)
 │   ├── install.js        # /install + /uninstall (setup checks, setup messages)
 │   ├── status.js         # bot status card (Bot Status / Environment / Websocket)
 │   ├── trap.js           # do-not-type Warning message + counters

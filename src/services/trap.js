@@ -19,7 +19,7 @@ const STAT_BUTTONS = [
 ];
 
 function buildTrapPayload(guild, stats) {
-  const action = String(config.doNotType?.action ?? 'alert').toLowerCase();
+  const action = String(config.doNotType?.action ?? 'kick').toLowerCase();
   const verb = ACTION_VERBS[action];
 
   const lines = ['**DO NOT POST MESSAGES IN THIS CHANNEL,**'];

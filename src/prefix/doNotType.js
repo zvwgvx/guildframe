@@ -7,11 +7,11 @@ import { onTrapCaught } from '../services/trap.js';
 import { buildAuditEmbed, truncate } from '../utils/embeds.js';
 
 // Handles messages posted in the "do not type" channel (used to catch bots/selfbots).
-// config.doNotType.action: "alert" (default) | "mute" | "kick" | "ban".
+// config.doNotType.action: "kick" (default) | "alert" | "mute" | "ban".
 export async function handleDoNotType(message, client) {
   const guild = message.guild;
   const isBotAuthor = message.author.bot;
-  const configuredAction = String(config.doNotType?.action ?? 'alert').toLowerCase();
+  const configuredAction = String(config.doNotType?.action ?? 'kick').toLowerCase();
   const action = !isBotAuthor && ['mute', 'kick', 'ban'].includes(configuredAction) ? configuredAction : 'alert';
 
   const fields = [

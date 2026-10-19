@@ -5,13 +5,17 @@
   "muteRoleName": "Muted",
   "modRoleId": "",
   "modLogChannelId": "",
+  "botRoleId": "",
+  "botRoleName": "Moderation Bot",
+  "botsRoleId": "",
+  "botsRoleName": "Bots",
   "memberRoleId": "",
   "memberRoleName": "Member",
   "mutedBotCmdsChannelId": "",
   "botStatusChannelId": "",
   "doNotType": {
     "channelId": "",
-    "action": "alert"
+    "action": "kick"
   },
   "warnEscalation": {
     "threshold": 0,

@@ -1,31 +1,58 @@
-// Member (verified) role management: marks regular users. Auto-assigned on join.
+// Role management (created by =install / /install, auto-assigned on member join):
+// - Member: basic access - view plus normal chat (special categories are configured in Discord).
+// - Bots: shared role for bot accounts.
+// - Bot ("Moderation Bot" by default): dedicated role for this bot, meant to sit at the top.
+import { PermissionsBitField } from 'discord.js';
 import { config, updateFileConfig } from '../config.js';
 
-// Finds or creates the member role (config.memberRoleId takes priority; the created role id is persisted).
-export async function ensureMemberRole(guild, { createIfMissing = true, reason = 'Member role setup' } = {}) {
-  let role = config.memberRoleId ? await guild.roles.fetch(config.memberRoleId).catch(() => null) : null;
+// The subset of permissions the bot itself has via the invite, so role creation never gets rejected.
+const MEMBER_PERMISSIONS = [
+  PermissionsBitField.Flags.ViewChannel,
+  PermissionsBitField.Flags.SendMessages,
+  PermissionsBitField.Flags.ReadMessageHistory,
+];
 
+const BOT_PERMISSIONS = [
+  PermissionsBitField.Flags.ManageRoles,
+  PermissionsBitField.Flags.KickMembers,
+  PermissionsBitField.Flags.BanMembers,
+  PermissionsBitField.Flags.ViewAuditLog,
+];
+
+const NO_PERMISSIONS = [];
+
+const ROLE_DEFS = {
+  member: { idKey: 'memberRoleId', nameKey: 'memberRoleName', permissions: MEMBER_PERMISSIONS, color: 0x57f287 },
+  bots: { idKey: 'botsRoleId', nameKey: 'botsRoleName', permissions: NO_PERMISSIONS, color: 0x3498db },
+  bot: { idKey: 'botRoleId', nameKey: 'botRoleName', permissions: BOT_PERMISSIONS, color: 0x5865f2 },
+};
+
+// Generic find-or-create. New roles spawn at the bottom; creation order in the installer
+// (this bot > Bots > Muted > Member) gives them a sane relative hierarchy.
+async function ensureRole(guild, kind, { createIfMissing = true, reason = 'Role setup' } = {}) {
+  const { idKey, nameKey, permissions, color } = ROLE_DEFS[kind];
+  const id = config[idKey];
+  const name = config[nameKey];
+
+  let role = id ? await guild.roles.fetch(id).catch(() => null) : null;
   if (!role) {
     role =
       guild.roles.cache.find(
-        (r) => !r.managed && r.name.toLowerCase() === String(config.memberRoleName).toLowerCase(),
+        (r) => !r.managed && r.name.toLowerCase() === String(name).toLowerCase(),
       ) ?? null;
   }
   if (!role && !createIfMissing) return null;
   if (!role) {
-    role = await guild.roles.create({
-      name: config.memberRoleName,
-      color: 0x57f287,
-      hoist: false,
-      mentionable: false,
-      permissions: [],
-      reason,
-    });
+    role = await guild.roles.create({ name, color, hoist: false, mentionable: false, permissions, reason });
     console.log(`[roles] Created the "${role.name}" role (${role.id}).`);
   }
-  if (config.memberRoleId !== role.id) {
-    updateFileConfig({ memberRoleId: role.id });
-    console.log(`[roles] Saved memberRoleId=${role.id} to config.json.`);
+  if (config[idKey] !== role.id) {
+    updateFileConfig({ [idKey]: role.id });
+    console.log(`[roles] Saved ${idKey}=${role.id} to config.json.`);
   }
   return role;
 }
+
+export const ensureMemberRole = (guild, opts) => ensureRole(guild, 'member', opts);
+export const ensureBotsRole = (guild, opts) => ensureRole(guild, 'bots', opts);
+export const ensureBotRole = (guild, opts) => ensureRole(guild, 'bot', opts);

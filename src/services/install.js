@@ -6,7 +6,7 @@ import { COLORS } from '../constants.js';
 import { deleteInstallMessage, getInstallMessage, listInstallMessages, setInstallMessage } from '../db.js';
 import { baseEmbed } from '../utils/embeds.js';
 import { applyMuteOverwritesAll, applyMutedCmdsOverwrite, ensureMuteRole } from './mutes.js';
-import { ensureMemberRole } from './roles.js';
+import { ensureBotsRole, ensureBotRole, ensureMemberRole } from './roles.js';
 import { STATUS_MESSAGE_KEY, refreshStatusMessage } from './status.js';
 import { TRAP_MESSAGE_KEY, refreshTrapMessage } from './trap.js';
 
@@ -78,6 +78,9 @@ export async function runInstall(client, guild, { installerId = null } = {}) {
   const by = installerId ? `Install by ${installerId}` : 'Install';
   const results = [];
   let muteRole = null;
+  let memberRole = null;
+  let botsRole = null;
+  let botRole = null;
 
   // 0. Server check - the single server this bot is allowed to operate in
   const configuredGuildId = String(config.guildId || '').trim();
@@ -101,33 +104,70 @@ export async function runInstall(client, guild, { installerId = null } = {}) {
     });
   }
 
-  // 1. Muted role
+  // 1. Dedicated role for this bot (created first so it sits above the other created roles)
+  try {
+    const existing = await findRole(guild, config.botRoleId, config.botRoleName);
+    botRole = await ensureBotRole(guild, { reason: by });
+    const assignedToSelf = existing
+      ? false
+      : await guild.members.me.roles.add(botRole, by).then(() => true).catch(() => false);
+    results.push({
+      label: 'Bot role',
+      status: existing ? 'OK' : 'Created',
+      detail: assignedToSelf
+        ? `<@&${botRole.id}> - assigned to the bot. Drag it to the top of the role list.`
+        : `<@&${botRole.id}> - assign it to the bot and drag it to the top of the role list (Discord does not let the bot assign roles above its own).`,
+    });
+  } catch (err) {
+    results.push({ label: 'Bot role', status: 'Failed', detail: err.message });
+  }
+
+  // 2. Bots role (shared role for bot accounts)
+  try {
+    const existing = await findRole(guild, config.botsRoleId, config.botsRoleName);
+    botsRole = await ensureBotsRole(guild, { reason: by });
+    let assigned = 0;
+    if (!existing) {
+      for (const member of guild.members.cache.filter((m) => m.user.bot).values()) {
+        await member.roles.add(botsRole, by).then(() => assigned++).catch(() => {});
+      }
+    }
+    results.push({
+      label: 'Bots role',
+      status: existing ? 'OK' : 'Created',
+      detail: `<@&${botsRole.id}>${assigned ? ` - assigned to ${assigned} existing bot(s)` : ''} - new bots get it automatically on join.`,
+    });
+  } catch (err) {
+    results.push({ label: 'Bots role', status: 'Failed', detail: err.message });
+  }
+
+  // 3. Muted role
   try {
     const existing = await findRole(guild, config.muteRoleId, config.muteRoleName);
     muteRole = await ensureMuteRole(guild, { reason: by });
     results.push({
       label: 'Muted role',
       status: existing ? 'OK' : 'Created',
-      detail: `<@&${muteRole.id}> - restrictions are applied through channel permissions`,
+      detail: `<@&${muteRole.id}> - can still view channels but cannot chat (enforced by channel overwrites)`,
     });
   } catch (err) {
     results.push({ label: 'Muted role', status: 'Failed', detail: err.message });
   }
 
-  // 2. Member (verified) role
+  // 4. Member (verified) role
   try {
     const existing = await findRole(guild, config.memberRoleId, config.memberRoleName);
-    const memberRole = await ensureMemberRole(guild, { reason: by });
+    memberRole = await ensureMemberRole(guild, { reason: by });
     results.push({
       label: 'Member role',
       status: existing ? 'OK' : 'Created',
-      detail: `<@&${memberRole.id}> - assigned automatically to new members`,
+      detail: `<@&${memberRole.id}> - basic access: view channels and chat. Restricted categories are configured separately in Discord.`,
     });
   } catch (err) {
     results.push({ label: 'Member role', status: 'Failed', detail: err.message });
   }
 
-  // 3. Mod log channel
+  // 5. Mod log channel
   if (!config.modLogChannelId) {
     results.push({
       label: 'Mod log channel',
@@ -156,7 +196,7 @@ export async function runInstall(client, guild, { installerId = null } = {}) {
     }
   }
 
-  // 4. Do-not-type channel + Warning message
+  // 6. Do-not-type channel + Warning message
   if (!config.doNotType?.channelId) {
     results.push({
       label: 'Do-not-type channel',
@@ -179,7 +219,7 @@ export async function runInstall(client, guild, { installerId = null } = {}) {
           label: 'Do-not-type channel',
           status: message ? (stored ? 'Updated' : 'Created') : 'Failed',
           detail: message
-            ? `<#${channel.id}> - Warning message ${stored ? 'refreshed' : 'posted'}`
+            ? `<#${channel.id}> - Warning message ${stored ? 'refreshed' : 'posted'}; anyone who types here is auto-${config.doNotType?.action ?? 'kick'}ed`
             : 'Could not post the Warning message (check permissions).',
         });
       }
@@ -188,7 +228,7 @@ export async function runInstall(client, guild, { installerId = null } = {}) {
     }
   }
 
-  // 5. Muted-commands channel + notice
+  // 7. Muted-commands channel + notice
   if (!config.mutedBotCmdsChannelId) {
     results.push({
       label: 'Muted-commands channel',
@@ -221,7 +261,7 @@ export async function runInstall(client, guild, { installerId = null } = {}) {
     }
   }
 
-  // 6. Bot status channel + live status card
+  // 8. Bot status channel + live status card
   if (!config.botStatusChannelId) {
     results.push({
       label: 'Bot status channel',
@@ -253,7 +293,7 @@ export async function runInstall(client, guild, { installerId = null } = {}) {
     }
   }
 
-  // 7. Channel restrictions everywhere else
+  // 9. Channel restrictions everywhere else
   if (muteRole) {
     try {
       const { ok, failed } = await applyMuteOverwritesAll(guild, muteRole);
@@ -266,6 +306,18 @@ export async function runInstall(client, guild, { installerId = null } = {}) {
       });
     } catch (err) {
       results.push({ label: 'Channel restrictions', status: 'Failed', detail: err.message });
+    }
+  }
+
+  // 10. Best-effort ordering of the created role stack: bot > bots > muted > member
+  if (botRole && botsRole && muteRole && memberRole) {
+    try {
+      const base = Math.min(memberRole.position, muteRole.position, botsRole.position, botRole.position);
+      await muteRole.edit({ position: base + 1 }).catch(() => {});
+      await botsRole.edit({ position: base + 2 }).catch(() => {});
+      await botRole.edit({ position: base + 3 }).catch(() => {});
+    } catch {
+      // Reordering is not allowed until the bot role is assigned and raised; the summary explains it.
     }
   }
 
