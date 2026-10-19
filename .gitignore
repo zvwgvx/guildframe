@@ -1,5 +1,31 @@
+# --- Dependencies ---
 node_modules/
+
+# --- Secrets (token, client id) ---
 .env
+.env.*
+!.env.example
+
+# --- Runtime data (SQLite database + WAL sidecars) ---
 data/
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+*.db
+
+# --- Logs ---
+logs/
 *.log
+npm-debug.log*
+yarn-error.log*
+
+# --- Scratch / diagnostics ---
+tmp-*
+*.tmp
+
+# --- Editor / OS junk ---
 .DS_Store
+Thumbs.db
+.idea/
+.vscode/
