@@ -21,7 +21,6 @@ import {
 } from '../services/install.js';
 import { logCase } from '../services/log.js';
 import { applyMute, applyMuteOverwritesAll, ensureMuteRole, removeMute } from '../services/mutes.js';
-import { offencesTopEmbed, offencesUserEmbed } from '../services/offencesView.js';
 import { cancelCaseTimer, scheduleCase } from '../services/scheduler.js';
 import {
   addToTicket,
@@ -63,7 +62,6 @@ const ALIASES = {
   puns: 'history',
   h: 'history',
   punishments: 'history',
-  offences: 'offences',
   case: 'case',
   warnings: 'warnings',
   setup: 'setup',
@@ -161,7 +159,6 @@ async function muteCommand(message, args, client) {
           target: target.user,
           durationMs,
           reason,
-          offenceNo: caseRow.offence_no,
           guildName: message.guild.name,
         }),
       ],
@@ -236,7 +233,6 @@ async function kickCommand(message, args, client) {
         action: 'kick',
         target: target.user,
         reason,
-        offenceNo: caseRow.offence_no,
         guildName: message.guild.name,
       }),
     ],
@@ -294,7 +290,6 @@ async function banCommand(message, args, client) {
         target: toUser(target),
         durationMs,
         reason,
-        offenceNo: caseRow.offence_no,
         guildName: message.guild.name,
       }),
     ],
@@ -360,7 +355,6 @@ async function warnCommand(message, args, client) {
     action: 'warn',
     target: toUser(target),
     reason,
-    offenceNo: caseRow.offence_no,
     guildName: message.guild.name,
   });
   embed.addFields({ name: 'Active warnings', value: String(activeWarns), inline: true });
@@ -429,29 +423,6 @@ async function historyCommand(message, args, client) {
 
   const sent = await message.reply({ embeds: [render(0)] });
   await paginateMessage(sent, { totalPages, render, authorId: message.author.id });
-}
-
-async function offencesCommand(message, args) {
-  // No target: the caller's own offence counts (members included).
-  if (!args[0]) {
-    if (!canSelfView(message.member)) {
-      return message.reply({ embeds: [errorEmbed(selfViewDeniedText(), 'Lookup denied')] });
-    }
-    return message.reply({ embeds: [offencesUserEmbed(message.guild.id, toUser(message.member))] });
-  }
-
-  // =offences top: the moderator-only top 10.
-  if ((args[0] ?? '').toLowerCase() === 'top') {
-    if (!ensureModeratorMessage(message, PermissionsBitField.Flags.ManageMessages, 'Manage Messages')) return;
-    return message.reply({ embeds: [offencesTopEmbed(message.guild.id)] });
-  }
-
-  if (!ensureModeratorMessage(message, PermissionsBitField.Flags.ManageMessages, 'Manage Messages')) return;
-
-  const target = await resolveTarget(message.guild, args[0]);
-  if (!target) return message.reply({ embeds: [errorEmbed('User not found. Mention them, provide an ID, or type their username.')] });
-
-  await message.reply({ embeds: [offencesUserEmbed(message.guild.id, toUser(target))] });
 }
 
 async function caseCommand(message, args, client) {
@@ -749,7 +720,6 @@ function helpCommand(message) {
     `**\`${p}warn\` <user> [reason]** - warn a member`,
     `**\`${p}warnings list\` [user | empty = you]** | **\`${p}warnings clear\` <user> [reason]** - view / clear warnings`,
     `**\`${p}puns\` | \`${p}h\` | \`${p}history\` | \`${p}punishments\` [user] [type]** - punishment history (empty user = your own)`,
-    `**\`${p}offences\` [user]** - offence counts (empty = your own; \`${p}offences top\` = top 10, moderator only)`,
     `**\`${p}case\` <number>** | **\`${p}case delete\` <number> [reason]** - view / hide a case`,
     `**\`${p}setup\`** - create the Muted role + apply channel restrictions`,
     `**\`${p}install\`** - full setup check (roles, channels, setup messages)`,
@@ -770,7 +740,6 @@ const HANDLERS = {
   unban: unbanCommand,
   warn: warnCommand,
   history: historyCommand,
-  offences: offencesCommand,
   case: caseCommand,
   warnings: warningsCommand,
   setup: setupCommand,

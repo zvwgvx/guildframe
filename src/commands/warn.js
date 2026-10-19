@@ -7,7 +7,7 @@ import { ensureModerator } from '../utils/permissions.js';
 
 export const data = new SlashCommandBuilder()
   .setName('warn')
-  .setDescription('Warn a user and increase their offence count')
+  .setDescription('Warn a user')
   .addUserOption((o) => o.setName('user').setDescription('The user to warn').setRequired(true))
   .addStringOption((o) => o.setName('reason').setDescription('Reason for the warning'));
 
@@ -36,7 +36,6 @@ export async function execute(interaction, client) {
     action: 'warn',
     target: user,
     reason,
-    offenceNo: caseRow.offence_no,
     guildName: guild.name,
   });
   embed.addFields({ name: 'Active warnings', value: String(activeWarns), inline: true });

@@ -1,6 +1,6 @@
 # Guildframe
 
-**Guildframe** - the frame of a guild: an all-in-one Discord bot covering **moderation** (role-based mutes, warnings + offence count, punishment history, mod log / audit log), a **do-not-type channel trap** to catch bots/selfbots, **tickets**, **dynamic voice rooms**, **welcome cards** and **live server stats** cards.
+**Guildframe** - the frame of a guild: an all-in-one Discord bot covering **moderation** (role-based mutes, warnings, punishment history, mod log / audit log), a **do-not-type channel trap** to catch bots/selfbots, **tickets**, **dynamic voice rooms**, **welcome cards** and **live server stats** cards.
 
 - **Stack:** Node.js + discord.js v14
 - **Database:** SQLite via the built-in `node:sqlite` module (no native modules, no DB server)
@@ -13,7 +13,6 @@
 | --- | --- |
 | Mute | Assign/remove the `Muted` role with per-channel restrictions. Temporary (`=mute 123 3d spam`) or permanent (`=mute 123 spam`). Expiry is scheduled and restored after restarts. Muted members who rejoin get re-muted automatically. |
 | Warnings | `=warn`, `/warnings list`, `/warnings clear`. Optional automatic mute when a user reaches the configured warning threshold (`warnEscalation` in config.json). |
-| Offence count | Every warn/mute/kick/ban creates a numbered case and increases the user's offence number. `=offences` shows a user's breakdown or the top 10 offenders. |
 | Punishment history | `=puns <user>` / `=h` / `=history` / `=punishments` and `/history` `/punishments` - paginated embeds in the `Punishments • user • Page x of y` style with Previous/Next buttons. |
 | Mod log | Every bot action (including automatic ones) is logged to `modLogChannelId` as a case embed. |
 | Audit log | Ban / unban / kick / timeout / manual Muted-role changes performed directly in Discord are caught via the audit log and logged with the executor. |
@@ -144,7 +143,6 @@ Checks every configured role/channel, creates the role stack (Muted, Member, Bot
 | `=warn <user> [reason]` | Warn a member. |
 | `=warnings list [user|empty=you]` / `=warnings clear <user> [reason]` | View / clear warnings. |
 | `=puns` / `=h` / `=history` / `=punishments [user] [type]` | Punishment history with page buttons (empty user = your own; members may self-lookup). |
-| `=offences [user|top]` | Offence counts - no argument = your own; `top` = top 10 (moderator only). |
 | `=case <number>` / `=case delete <number> [reason]` | View / hide a case. |
 | `=rename <new name>` | Rename this ticket (in ticket channels). |
 | `=close [note]` | Close this ticket (channel is removed). |
@@ -179,7 +177,6 @@ Targets accept a **user ID**, a **mention** (`<@123...>`) or a **username**.
 | `/unban user_id reason:` | Unban. |
 | `/warn user reason:` | Warn. |
 | `/history user type:` and `/punishments user type:` | Punishment history (`user` optional - omit to see your own; members holding the Member role may self-lookup, other users need a moderator). |
-| `/offences user:` `top:` | Offence counts - omit `user` for your own; `top:true` = top 10 (moderators). |
 | `/case view|delete number:` | View or hide a case. |
 | `/warnings list|clear user:` | Manage warnings (`list` without `user` shows your own warnings). |
 | `/rename name:` | Rename this ticket channel (owner/staff only, in ticket channels). |
@@ -190,7 +187,7 @@ Targets accept a **user ID**, a **mention** (`<@123...>`) or a **username**.
 | `/install` | Full setup check: roles, channels, restrictions, setup messages. |
 | `/uninstall` | Delete the setup messages the bot posted in channels. |
 
-Note: inside the muted-commands channel, muted users can run `/history` / `/punishments` (and `=puns`) on **themselves** without moderator permissions. Everywhere else, members holding the configured **Member role** may also use `/history` `/punishments` `/offences` `/warnings list` (and the prefix forms) **on themselves** - leaving the user empty shows the caller's own record; looking up another user still requires a moderator, as does `/offences top` and `=warnings clear`.
+Note: inside the muted-commands channel, muted users can run `/history` / `/punishments` (and `=puns`) on **themselves** without moderator permissions. Everywhere else, members holding the configured **Member role** may also use `/history` `/punishments` `/warnings list` (and the prefix forms) **on themselves** - leaving the user empty shows the caller's own record; looking up another user still requires a moderator, as does `=warnings clear`.
 
 > Users with the configured `modRoleId` (or Administrators) can use every command **except `/ban`, `=ban`, `/kick`, `=kick`** - those require the real Discord **Ban Members** / **Kick Members** permission. All other commands fall back to the matching Discord permission (Manage Roles, Manage Messages, Manage Server).
 
@@ -200,7 +197,6 @@ Note: inside the muted-commands channel, muted users can run `/history` / `/puni
 
 - Every action creates a numbered case (`Case #12`, per server) - including automatic mutes, unmutes, unbans and notes.
 - `status` is `active`, `expired` (timer ran out) or `removed` (undone early / cleared). History shows the label next to `**Status:**`.
-- `offence_no` counts only warn/mute/kick/ban cases and is shown as `(Offence #N)` next to the reason.
 - `/case delete` sets `hidden = 1` - the case disappears from history but stays in the database.
 
 ### Roles
@@ -289,7 +285,7 @@ src/
 ├── deploy-commands.js    # global slash command registration
 ├── config.js             # .env + config.json loader (writes role IDs back)
 ├── constants.js          # colors, type metadata, statuses, limits
-├── db.js                 # SQLite schema + queries (cases, offences)
+├── db.js                 # SQLite schema + queries (cases, punishments)
 ├── commands/             # slash commands
 ├── events/               # ready, interactionCreate, messageCreate, guildMemberAdd, voiceStateUpdate,
 │                         # guildAuditLogEntryCreate, channelCreate

@@ -30,7 +30,7 @@ const staffMention = (caseRow, clientId) =>
 // One punishment block, e.g.:
 // ● **MUTE** ( `#9887` ) | 10 days ago
 // > **Status:** Active
-// > **Reason:** Negative Use of Disabilities (Offence #1)
+// > **Reason:** Negative Use of Disabilities
 // > **Staff:** @MaxGamer
 // > **Expires:** in 11 days
 // Collapses newlines (so single-line markdown like "> ..." never breaks) and hard-caps the length
@@ -47,8 +47,7 @@ export function punishmentEntry(caseRow, { clientId = null } = {}) {
     `> **Status:** ${statusLabel(caseRow)}`,
   ];
   const reason = truncate(caseRow.reason || 'No reason provided', 150);
-  const offence = caseRow.offence_no ? ` (Offence #${caseRow.offence_no})` : '';
-  lines.push(`> **Reason:** ${reason}${offence}`);
+  lines.push(`> **Reason:** ${reason}`);
   lines.push(`> **Staff:** ${staffMention(caseRow, clientId)}`);
   if (caseRow.expires_at) lines.push(`> **Expires:** ${rel(caseRow.expires_at)}`);
   return lines.join('\n');
@@ -78,7 +77,7 @@ const ACTION_TITLES = {
 };
 
 // Action confirmation embed (matches the "Player Muted" style).
-export function buildActionEmbed({ action, target, durationMs = null, reason = null, offenceNo = null, guildName = null }) {
+export function buildActionEmbed({ action, target, durationMs = null, reason = null, guildName = null }) {
   const meta = TYPE_META[action] ?? TYPE_META.note;
   const mention = `<@${target.id}>`;
   let sentence;
@@ -105,8 +104,7 @@ export function buildActionEmbed({ action, target, durationMs = null, reason = n
       sentence = `${mention}`;
   }
   const lines = [sentence];
-  if (reason) lines.push(`**Reason:** ${truncate(reason, 300)}${offenceNo ? ` (Offence #${offenceNo})` : ''}`);
-  else if (offenceNo) lines.push(`**Offence:** #${offenceNo}`);
+  if (reason) lines.push(`**Reason:** ${truncate(reason, 300)}`);
 
   const embed = baseEmbed(meta.color)
     .setTitle(ACTION_TITLES[action] ?? 'Action applied')
@@ -127,7 +125,6 @@ export function buildCaseEmbed(caseRow, { clientId = null } = {}) {
     `**Staff:** ${staffMention(caseRow, clientId)}`,
   ];
   if (caseRow.reason) lines.push(`**Reason:** ${truncate(caseRow.reason, 500)}`);
-  if (caseRow.offence_no) lines.push(`**Offence:** #${caseRow.offence_no}`);
   if (caseRow.duration_ms) lines.push(`**Duration:** ${formatDuration(caseRow.duration_ms)}`);
   if (caseRow.expires_at) lines.push(`**Expires:** ${ts(caseRow.expires_at, 'F')} (${rel(caseRow.expires_at)})`);
   lines.push(`**Created:** ${ts(caseRow.created_at, 'F')}`);

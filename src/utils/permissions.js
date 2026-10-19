@@ -30,7 +30,7 @@ export function isModerator(member) {
   return isAdministrator(member) || isModRole(member);
 }
 
-// Self-serve lookups (history, offences, warnings list): members holding the
+// Self-serve lookups (history, warnings list): members holding the
 // configured Member role may look up their own moderation record without any
 // moderator permission. When no member role is configured, any server member
 // may self-view. Moderators always pass.

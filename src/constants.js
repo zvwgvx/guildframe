@@ -26,9 +26,6 @@ export const TYPE_META = {
   note: { label: 'NOTE', color: COLORS.note },
 };
 
-// Case types that count towards the offence number.
-export const OFFENCE_TYPES = ['warn', 'mute', 'kick', 'ban'];
-
 export const CASE_STATUS = {
   active: { label: 'Active' },
   expired: { label: 'Expired' },

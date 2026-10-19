@@ -3,7 +3,6 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { config } from './config.js';
-import { OFFENCE_TYPES } from './constants.js';
 
 const dbFile = path.resolve(config.dbPath);
 mkdirSync(path.dirname(dbFile), { recursive: true });
@@ -23,7 +22,6 @@ CREATE TABLE IF NOT EXISTS cases (
   duration_ms   INTEGER,
   expires_at    INTEGER,
   status        TEXT NOT NULL DEFAULT 'active',
-  offence_no    INTEGER,
   hidden        INTEGER NOT NULL DEFAULT 0,
   created_at    INTEGER NOT NULL,
   updated_at    INTEGER,
@@ -86,14 +84,11 @@ try {
   // Column already exists.
 }
 
-// Migration from the initial schema (active flag -> status, offence numbering).
+// Migration from the initial schema (active flag -> status).
 const columns = db.prepare('PRAGMA table_info(cases)').all().map((c) => c.name);
 if (!columns.includes('status')) {
   db.exec("ALTER TABLE cases ADD COLUMN status TEXT NOT NULL DEFAULT 'active'");
   db.exec("UPDATE cases SET status = CASE WHEN active = 1 THEN 'active' ELSE 'removed' END");
-}
-if (!columns.includes('offence_no')) {
-  db.exec('ALTER TABLE cases ADD COLUMN offence_no INTEGER');
 }
 // The old per-guild config table is superseded by config.json.
 db.exec('DROP TABLE IF EXISTS guild_config');
@@ -110,8 +105,6 @@ if (tables.includes('trap_message')) {
 
 // ---------- Cases ----------
 
-const OFFENCE_SQL = "('warn','mute','kick','ban')";
-
 export function createCase({
   guildId,
   userId,
@@ -127,25 +120,14 @@ export function createCase({
       .prepare('SELECT COALESCE(MAX(case_number), 0) + 1 AS n FROM cases WHERE guild_id = ?')
       .get(guildId);
 
-    let offenceNo = null;
-    if (OFFENCE_TYPES.includes(type)) {
-      const prev = db
-        .prepare(
-          `SELECT COALESCE(MAX(offence_no), 0) + 1 AS n FROM cases
-           WHERE guild_id = ? AND user_id = ? AND type IN ${OFFENCE_SQL}`,
-        )
-        .get(guildId, userId);
-      offenceNo = prev.n;
-    }
-
     const expiresAt = durationMs ? createdAt + durationMs : null;
     const info = db
       .prepare(
         `INSERT INTO cases
-          (guild_id, case_number, user_id, moderator_id, type, reason, duration_ms, expires_at, status, offence_no, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)`,
+          (guild_id, case_number, user_id, moderator_id, type, reason, duration_ms, expires_at, status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)`,
       )
-      .run(guildId, n, userId, moderatorId, type, reason, durationMs, expiresAt, offenceNo, createdAt, createdAt);
+      .run(guildId, n, userId, moderatorId, type, reason, durationMs, expiresAt, createdAt, createdAt);
 
     db.exec('COMMIT');
     return getCaseById(Number(info.lastInsertRowid));
@@ -220,30 +202,6 @@ export const setActiveCasesStatus = (guildId, userId, type, status) =>
 
 export const hideCase = (id) =>
   Number(db.prepare('UPDATE cases SET hidden = 1, updated_at = ? WHERE id = ?').run(Date.now(), id).changes);
-
-// ---------- Offences ----------
-
-export const offenceBreakdown = (guildId, userId) =>
-  db
-    .prepare(
-      `SELECT type, COUNT(*) AS count, MAX(created_at) AS last_at
-       FROM cases
-       WHERE guild_id = ? AND user_id = ? AND hidden = 0 AND type IN ${OFFENCE_SQL}
-       GROUP BY type`,
-    )
-    .all(guildId, userId);
-
-export const topOffenders = (guildId, limit = 10) =>
-  db
-    .prepare(
-      `SELECT user_id, COUNT(*) AS count
-       FROM cases
-       WHERE guild_id = ? AND hidden = 0 AND type IN ${OFFENCE_SQL}
-       GROUP BY user_id
-       ORDER BY count DESC, user_id ASC
-       LIMIT ?`,
-    )
-    .all(guildId, limit);
 
 // ---------- Do-not-type trap ----------
 

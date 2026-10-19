@@ -91,7 +91,6 @@ export async function execute(interaction, client) {
         target: user,
         durationMs,
         reason,
-        offenceNo: caseRow.offence_no,
         guildName: interaction.guild.name,
       }),
     ],

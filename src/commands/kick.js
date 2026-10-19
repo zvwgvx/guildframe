@@ -49,7 +49,6 @@ export async function execute(interaction, client) {
         action: 'kick',
         target: member.user,
         reason,
-        offenceNo: caseRow.offence_no,
         guildName: interaction.guild.name,
       }),
     ],
