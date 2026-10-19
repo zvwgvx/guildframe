@@ -349,9 +349,20 @@ async function warnCommand(message, args, client) {
 }
 
 async function historyCommand(message, args, client) {
-  if (!ensureModeratorMessage(message, PermissionsBitField.Flags.ManageMessages, 'Manage Messages')) return;
+  const inMutedCmds = Boolean(config.mutedBotCmdsChannelId && message.channelId === config.mutedBotCmdsChannelId);
 
-  const target = await resolveTarget(message.guild, args[0]);
+  // Inside the muted-commands channel a muted user may look up their own history
+  // (no arguments = their own) without any moderator permission.
+  let target = null;
+  if (inMutedCmds) {
+    target = args[0] ? await resolveTarget(message.guild, args[0]) : message.member;
+    if (!target || target.id !== message.author.id) {
+      if (!ensureModeratorMessage(message, PermissionsBitField.Flags.ManageMessages, 'Manage Messages')) return;
+    }
+  } else {
+    if (!ensureModeratorMessage(message, PermissionsBitField.Flags.ManageMessages, 'Manage Messages')) return;
+    target = await resolveTarget(message.guild, args[0]);
+  }
   if (!target) return message.reply({ embeds: [errorEmbed('User not found. Mention them, provide an ID, or type their username.')] });
 
   const user = toUser(target);

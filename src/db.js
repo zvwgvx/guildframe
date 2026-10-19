@@ -41,10 +41,12 @@ CREATE TABLE IF NOT EXISTS trap_stats (
   PRIMARY KEY (guild_id, key)
 );
 
-CREATE TABLE IF NOT EXISTS trap_message (
-  guild_id   TEXT PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS install_messages (
+  guild_id   TEXT NOT NULL,
+  key        TEXT NOT NULL,
   channel_id TEXT NOT NULL,
-  message_id TEXT NOT NULL
+  message_id TEXT NOT NULL,
+  PRIMARY KEY (guild_id, key)
 );
 `);
 
@@ -59,6 +61,16 @@ if (!columns.includes('offence_no')) {
 }
 // The old per-guild config table is superseded by config.json.
 db.exec('DROP TABLE IF EXISTS guild_config');
+
+// Older installs tracked only the trap message; migrate it into install_messages.
+const tables = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map((t) => t.name);
+if (tables.includes('trap_message')) {
+  db.exec(
+    `INSERT OR REPLACE INTO install_messages (guild_id, key, channel_id, message_id)
+     SELECT guild_id, 'trap', channel_id, message_id FROM trap_message`,
+  );
+  db.exec('DROP TABLE trap_message');
+}
 
 // ---------- Cases ----------
 
@@ -206,17 +218,25 @@ export function bumpTrapStat(guildId, key) {
   ).run(guildId, key);
 }
 
-export function getTrapStats(guildId) {
+export const getTrapStats = (guildId) => {
   const rows = db.prepare('SELECT key, count FROM trap_stats WHERE guild_id = ?').all(guildId);
   return Object.fromEntries(rows.map((r) => [r.key, Number(r.count)]));
-}
+};
 
-export const getTrapMessageRow = (guildId) =>
-  db.prepare('SELECT * FROM trap_message WHERE guild_id = ?').get(guildId) ?? null;
+// ---------- Install messages (setup embeds the bot keeps in channels) ----------
 
-export function setTrapMessageRow(guildId, channelId, messageId) {
+export const getInstallMessage = (guildId, key) =>
+  db.prepare('SELECT * FROM install_messages WHERE guild_id = ? AND key = ?').get(guildId, key) ?? null;
+
+export const listInstallMessages = (guildId) =>
+  db.prepare('SELECT * FROM install_messages WHERE guild_id = ?').all(guildId);
+
+export function setInstallMessage(guildId, key, channelId, messageId) {
   db.prepare(
-    `INSERT INTO trap_message (guild_id, channel_id, message_id) VALUES (?, ?, ?)
-     ON CONFLICT (guild_id) DO UPDATE SET channel_id = excluded.channel_id, message_id = excluded.message_id`,
-  ).run(guildId, channelId, messageId);
+    `INSERT INTO install_messages (guild_id, key, channel_id, message_id) VALUES (?, ?, ?, ?)
+     ON CONFLICT (guild_id, key) DO UPDATE SET channel_id = excluded.channel_id, message_id = excluded.message_id`,
+  ).run(guildId, key, channelId, messageId);
 }
+
+export const deleteInstallMessage = (guildId, key) =>
+  Number(db.prepare('DELETE FROM install_messages WHERE guild_id = ? AND key = ?').run(guildId, key).changes);

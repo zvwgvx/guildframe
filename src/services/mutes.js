@@ -47,18 +47,38 @@ export function muteOverwriteOptions(channel) {
   };
 }
 
+// The "muted bot commands" channel is the one place muted users may still talk/use commands.
+export function mutedCmdsOverwriteOptions(channel) {
+  if (channel.isVoiceBased()) return { ViewChannel: true, Connect: true, Speak: true };
+  return {
+    ViewChannel: true,
+    SendMessages: true,
+    SendMessagesInThreads: true,
+    AddReactions: true,
+  };
+}
+
 export async function applyMuteOverwrite(channel, role, reason = 'Apply Muted role restrictions') {
   await channel.permissionOverwrites.edit(role, muteOverwriteOptions(channel), { reason });
 }
 
+export async function applyMutedCmdsOverwrite(channel, role, reason = 'Allow muted users to use commands here') {
+  await channel.permissionOverwrites.edit(role, mutedCmdsOverwriteOptions(channel), { reason });
+}
+
 // Applies the overwrite to every existing channel (categories are skipped).
+// The muted-commands channel is excluded and explicitly kept open for muted users.
 export async function applyMuteOverwritesAll(guild, role) {
   let ok = 0;
   let failed = 0;
   for (const channel of guild.channels.cache.values()) {
     if (channel.type === ChannelType.GuildCategory) continue;
     try {
-      await applyMuteOverwrite(channel, role);
+      if (config.mutedBotCmdsChannelId && channel.id === config.mutedBotCmdsChannelId) {
+        await applyMutedCmdsOverwrite(channel, role);
+      } else {
+        await applyMuteOverwrite(channel, role);
+      }
       ok += 1;
     } catch {
       failed += 1;

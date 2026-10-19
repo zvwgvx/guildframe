@@ -8,9 +8,17 @@ import { buildAuditEmbed } from '../utils/embeds.js';
 
 export const name = Events.GuildMemberAdd;
 
-// Re-applies the mute when a member rejoins while their mute case is still active.
+// Assigns the member (verified) role to new joins and re-applies an active mute on rejoin.
 export async function execute(member, client) {
   if (member.guild.id !== config.guildId) return;
+
+  // Member role (humans only).
+  if (config.memberRoleId && !member.user.bot) {
+    await member.roles
+      .add(config.memberRoleId, 'Member role on join')
+      .catch((err) => console.error('[guildMemberAdd] Failed to add the member role:', err.message));
+  }
+
   try {
     const actives = getActiveCases(member.guild.id, member.id, 'mute');
     if (!actives.length) return;

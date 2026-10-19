@@ -12,6 +12,9 @@ const DEFAULT_FILE_CONFIG = {
   muteRoleName: 'Muted',
   modRoleId: '',
   modLogChannelId: '',
+  memberRoleId: '',
+  memberRoleName: 'Member',
+  mutedBotCmdsChannelId: '',
   doNotType: { channelId: '', action: 'alert' },
   warnEscalation: { threshold: 0, duration: '1h' },
 };

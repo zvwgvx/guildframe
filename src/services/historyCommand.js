@@ -1,5 +1,6 @@
 // Shared implementation for the /history and /punishments commands.
 import { MessageFlags, PermissionsBitField, SlashCommandBuilder } from 'discord.js';
+import { config } from '../config.js';
 import { HISTORY_PAGE_SIZE } from '../constants.js';
 import { listCases } from '../db.js';
 import { buildPunishmentsEmbed, infoEmbed } from '../utils/embeds.js';
@@ -30,11 +31,18 @@ export const buildHistoryCommand = (name) =>
 export async function executeHistory(interaction, client) {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-  if (!(await ensureModerator(interaction, PermissionsBitField.Flags.ManageMessages, 'Manage Messages'))) {
+  const user = interaction.options.getUser('user');
+
+  // Inside the muted-commands channel a muted user may look up their own history
+  // without any moderator permission.
+  const inMutedCmds = Boolean(
+    config.mutedBotCmdsChannelId && interaction.channelId === config.mutedBotCmdsChannelId,
+  );
+  const selfLookup = inMutedCmds && user.id === interaction.user.id;
+  if (!selfLookup && !(await ensureModerator(interaction, PermissionsBitField.Flags.ManageMessages, 'Manage Messages'))) {
     return;
   }
 
-  const user = interaction.options.getUser('user');
   const requested = (interaction.options.getString('type') ?? 'all').toLowerCase();
   const type = HISTORY_TYPES.includes(requested) ? requested : 'all';
 

@@ -5,6 +5,9 @@
   "muteRoleName": "Muted",
   "modRoleId": "",
   "modLogChannelId": "",
+  "memberRoleId": "",
+  "memberRoleName": "Member",
+  "mutedBotCmdsChannelId": "",
   "doNotType": {
     "channelId": "",
     "action": "alert"

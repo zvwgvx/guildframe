@@ -19,6 +19,9 @@ Discord moderation bot with **role-based mutes**, **warnings + offence count**, 
 | Audit log | Ban / unban / kick / timeout / manual Muted-role changes performed directly in Discord are caught via the audit log and logged with the executor. |
 | Temp ban | `/ban user duration:` or `=ban <user> <duration> [reason]` - unbanned automatically on expiry. |
 | Do-not-type trap | Any message posted in `doNotType.channelId` is logged with a mod-role ping. Optionally auto-`mute` / `kick` / `ban` the author (never applied to real bot accounts - alert only). A persistent **Warning** sticker with live counter buttons (Caught / Muted / Kicked / Banned) is kept in the channel automatically. |
+| Muted-commands channel | Muted users keep access to `mutedBotCmdsChannelId` so they can still use bot commands there (`=puns` / `/history` on themselves, `=help`). A notice embed is kept in the channel automatically. |
+| Member role | `memberRoleId` (e.g. "Member" / "Verified") is assigned automatically to every human who joins. |
+| Install / Uninstall | `/install` checks every configured role/channel, applies the setup and posts/refreshes the setup messages (overwrites existing ones). `/uninstall` deletes those messages again. |
 
 ## Requirements
 
@@ -46,6 +49,9 @@ CLIENT_ID=__REDACTED__
   "muteRoleName": "Muted",        // name used when the bot creates the role
   "modRoleId": "123...",          // role allowed to use moderation commands
   "modLogChannelId": "123...",    // channel receiving all logs
+  "memberRoleId": "123...",       // Member/Verified role ID (leave empty to auto-create on /install)
+  "memberRoleName": "Member",     // name used when the bot creates the member role
+  "mutedBotCmdsChannelId": "123...", // channel muted users can still talk in to use commands
   "doNotType": {
     "channelId": "123...",        // the "do not type here" channel
     "action": "alert"             // alert | mute | kick | ban
@@ -57,7 +63,7 @@ CLIENT_ID=__REDACTED__
 }
 ```
 
-`config.json` is read at startup and **written back** when the bot auto-creates the Muted role, so `muteRoleId` fills itself in.
+`config.json` is read at startup and **written back** when the bot auto-creates the Muted / Member roles, so `muteRoleId` and `memberRoleId` fill themselves in.
 
 ## Setup
 
@@ -91,10 +97,10 @@ npm start
 ### 4. In the server
 
 ```
-/setup
+/install
 ```
 
-Creates/uses the Muted role, applies restrictions to every existing channel, and prints a summary. New channels are restricted automatically.
+Checks every configured role/channel, creates the Muted / Member roles if missing, applies the channel restrictions, posts the setup messages (the Warning sticker in the do-not-type channel and the notice in the muted-commands channel) and prints a summary embed. Re-running it overwrites/refreshes everything. `/uninstall` deletes the setup messages again.
 
 ## Commands
 
@@ -139,6 +145,10 @@ Targets accept a **user ID**, a **mention** (`<@123...>`) or a **username**.
 | `/case view|delete number:` | View or hide a case. |
 | `/warnings list|clear user:` | Manage warnings. |
 | `/setup` | Create Muted role + apply channel restrictions. |
+| `/install` | Full setup check: roles, channels, restrictions, setup messages. |
+| `/uninstall` | Delete the setup messages the bot posted in channels. |
+
+Note: inside the muted-commands channel, muted users can run `/history` / `/punishments` (and `=puns`) on **themselves** without moderator permissions.
 
 > Users with the configured `modRoleId` (or Administrators) can use every command **except `/ban`, `=ban`, `/kick`, `=kick`** - those require the real Discord **Ban Members** / **Kick Members** permission. All other commands fall back to the matching Discord permission (Manage Roles, Manage Messages, Manage Server).
 
@@ -153,8 +163,15 @@ Targets accept a **user ID**, a **mention** (`<@123...>`) or a **username**.
 
 ### Mute
 
-- A role alone cannot remove permissions, so the bot denies `Send Messages`, `Add Reactions`, `Create Threads`, `Speak`, ... via **channel overwrites** for the Muted role (`/setup` applies them everywhere; new channels are handled by the `channelCreate` event).
+- A role alone cannot remove permissions, so the bot denies `Send Messages`, `Add Reactions`, `Create Threads`, `Speak`, ... via **channel overwrites** for the Muted role (`/install` / `/setup` apply them everywhere; new channels are handled by the `channelCreate` event).
 - Temporary mutes are stored with `expires_at` and re-scheduled on boot; expiring mutes have the role removed automatically and the case marked `expired`.
+
+### Muted-commands channel
+
+- `mutedBotCmdsChannelId` is excluded from the mute overwrites: the Muted role is explicitly **allowed** to view and type there, so muted users can still talk to the bot.
+- The bot keeps a notice embed in that channel ("You are muted ... use `=puns` to view your own history").
+- Self-service: inside that channel only, a muted user can run `=puns` / `=h` / `=history` / `=punishments` (no arguments = themselves) and `/history` `/punishments` on themselves without any moderator permission. Everything else still requires permissions.
+- Re-run `/install` after changing `mutedBotCmdsChannelId`; the `channelCreate` event keeps the channel open if it is ever recreated.
 
 ### Logging
 
@@ -177,7 +194,7 @@ config.json               # bot configuration (IDs, prefix, traps)
 src/
 ├── index.js              # boot: intents, loaders, login
 ├── deploy-commands.js    # global slash command registration
-├── config.js             # .env + config.json loader (writes muteRoleId back)
+├── config.js             # .env + config.json loader (writes role IDs back)
 ├── constants.js          # colors, type metadata, statuses, limits
 ├── db.js                 # SQLite schema + queries (cases, offences)
 ├── commands/             # slash commands
@@ -188,6 +205,9 @@ src/
 │   └── doNotType.js      # do-not-type channel trap
 ├── services/
 │   ├── mutes.js          # Muted role + overwrites + assign/remove
+│   ├── roles.js          # Member/verified role (auto-created, assigned on join)
+│   ├── install.js        # /install + /uninstall (setup checks, setup messages)
+│   ├── trap.js           # do-not-type Warning message + counters
 │   ├── scheduler.js      # temp mute/ban timers (restored on boot)
 │   ├── escalation.js     # auto-mute on warning threshold
 │   ├── historyCommand.js # shared /history + /punishments implementation
@@ -198,7 +218,8 @@ data/bot.sqlite           # database (auto-created, gitignored)
 
 ## Operational notes
 
-- **Muted role deleted?** The bot recreates it (and updates `muteRoleId` in config.json) on the next mute; run `/setup` to re-sync channel overwrites.
+- **Muted role deleted?** The bot recreates it (and updates `muteRoleId` in config.json) on the next mute; run `/install` to re-sync channel overwrites.
+- **Changed config IDs?** Run `/install` again - it re-checks everything and refreshes/overwrites the setup messages.
 - **Logs not sent?** Check `modLogChannelId` and that the bot can Send Messages + Embed Links there.
 - **Backup:** copy `data/bot.sqlite` (plus `-wal` while running).
 - **Slash commands missing?** Global commands can take up to an hour to appear; re-run `npm run deploy`.

@@ -3,8 +3,10 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import { config } from '../config.js';
 import { COLORS } from '../constants.js';
-import { bumpTrapStat, getTrapMessageRow, getTrapStats, setTrapMessageRow } from '../db.js';
+import { bumpTrapStat, getInstallMessage, getTrapStats, setInstallMessage } from '../db.js';
 import { baseEmbed } from '../utils/embeds.js';
+
+export const TRAP_MESSAGE_KEY = 'trap';
 
 const ACTION_VERBS = { mute: 'muted', kick: 'kicked', ban: 'banned' };
 
@@ -58,7 +60,7 @@ export async function refreshTrapMessage(client) {
   }
 
   const payload = buildTrapPayload(guild, getTrapStats(guild.id));
-  const stored = getTrapMessageRow(guild.id);
+  const stored = getInstallMessage(guild.id, TRAP_MESSAGE_KEY);
 
   if (stored?.message_id) {
     const message = await channel.messages.fetch(stored.message_id).catch(() => null);
@@ -69,7 +71,7 @@ export async function refreshTrapMessage(client) {
   }
 
   const sent = await channel.send(payload);
-  setTrapMessageRow(guild.id, channel.id, sent.id);
+  setInstallMessage(guild.id, TRAP_MESSAGE_KEY, channel.id, sent.id);
   return sent;
 }
 
