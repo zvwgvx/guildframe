@@ -22,6 +22,8 @@ const DEFAULT_FILE_CONFIG = {
   memberRoleName: 'Member',
   mutedBotCmdsChannelId: '',
   botStatusChannelId: '',
+  serverStatsChannelId: '',
+  serverStatsVoiceChannelId: '',
   doNotType: { channelId: '', action: 'kick', purgeMinutes: 30 },
   warnEscalation: { threshold: 0, duration: '1h' },
 };

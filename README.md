@@ -22,6 +22,7 @@ Discord moderation bot with **role-based mutes**, **warnings + offence count**, 
 | Muted-commands channel | `mutedBotCmdsChannelId` is **visible to muted users and staff only** (`@everyone` is locked out; muted users + mods + the bot keep explicit allows) so muted users can still use bot commands there (`=puns` / `/history` on themselves, `=help`). A notice embed is kept in the channel automatically. |
 | Roles | `/install` creates the whole role stack: **Muted** (above Member, hidden look), **Member**, **Bots** and the visible bot identity role - both below Member with stripped permissions - plus the hidden **Bot Perms** role (`Administrator`). |
 | Bot status | A live **Status Report** card (Components V2) in `botStatusChannelId`: Bot Status (CPU cores/usage, memory, uptime), Environment (Node.js / discord.js / platform / bot version) and Websocket (ping, shards, state). Refreshed every minute. |
+| Server stats | A live **Server Report** card in `serverStatsChannelId`: Members (All / Humans / Bots), Online (live counts - needs the Presence Intent) and Server (Boosts, Channels, Roles, Created date). Optionally keeps a voice channel (`serverStatsVoiceChannelId`) automatically renamed to `All Members: N` (throttled to Discord's 2-renames/10-minutes limit). |
 | Install / Uninstall | `/install` checks every configured role/channel, applies the setup and posts/refreshes the setup messages (overwrites existing ones). `/uninstall` deletes those messages again. |
 
 ## Requirements
@@ -60,6 +61,8 @@ CLIENT_ID=__REDACTED__
   "botPermsRoleName": "Bot Perms", // name used when the bot creates the hidden perms role
   "mutedBotCmdsChannelId": "123...", // channel muted users can still talk in to use commands
   "botStatusChannelId": "123...", // channel receiving the live "Status Report" card
+  "serverStatsChannelId": "123...", // channel receiving the live "Server Report" card
+  "serverStatsVoiceChannelId": "123...", // optional voice channel auto-renamed to "All Members: N"
   "doNotType": {
     "channelId": "123...",        // the "do not type here" channel
     "action": "kick",             // kick (default) | alert | mute | ban
@@ -81,7 +84,7 @@ CLIENT_ID=__REDACTED__
 
 1. Developer Portal -> **New Application**.
 2. **Bot** tab -> **Reset Token** -> copy the token into `.env`.
-3. **Bot** tab -> enable **Server Members Intent** and **Message Content Intent** (both required).
+3. **Bot** tab -> enable **Server Members Intent**, **Message Content Intent** and **Presence Intent** (Presence is needed for the live online counts on the Server Report card).
 4. **General Information** tab -> copy the **Application ID** into `.env`.
 
 ### 2. Invite the bot
@@ -110,7 +113,7 @@ npm start
 /install
 ```
 
-Checks every configured role/channel, creates the role stack (Moderation Bot, Bots, Muted, Member) when missing, applies the channel restrictions, posts the setup messages (the Warning sticker in the do-not-type channel, the notice in the muted-commands channel and the live Status Report card in the bot-status channel) and prints a summary embed. The embed includes the server the bot operates in, one status row per role/channel and a final **Report** field listing everything that is not ready yet (`Not set` / `Failed`). Re-running it overwrites/refreshes everything. `/uninstall` deletes the setup messages again.
+Checks every configured role/channel, creates the role stack (Muted, Member, Bots, bot identity, hidden Bot Perms) when missing, applies the channel restrictions, posts the setup messages (the Warning sticker in the do-not-type channel, the notice in the muted-commands channel, the Status Report card in the bot-status channel and the Server Report card in the server-stats channel) and prints a summary embed. The embed includes the server the bot operates in, one status row per role/channel and a final **Report** field listing everything that is not ready yet (`Not set` / `Failed`). Re-running it overwrites/refreshes everything. `/uninstall` deletes the setup messages again.
 
 ## Commands
 
@@ -219,6 +222,12 @@ Note: inside the muted-commands channel, muted users can run `/history` / `/puni
   `Bot Status` (CPU cores/usage, Mem Max, Mem Use, Uptime) - `Environment` (Node JS, Discord JS, Platform, Bot version) - `Websocket` (Ping, Shards, State).
 - Posted/refreshed by `/install`, restored on startup, removed by `/uninstall`. Keeping only these three sections is intentional (no queue/arena/plugin noise).
 
+### Server stats channel
+
+- The same report style in `serverStatsChannelId`, titled **Server Report** and edited every minute:
+  `Members` (All Members, Humans, Bots) - `Online` (Online, Idle, Do Not Disturb, Offline - live from presences; enable the **Presence Intent** in the Developer Portal, otherwise it says unavailable) - `Server` (Boosts + Tier, Channels text/voice, Roles, Created date).
+- Optional: put the ID of the "All Members" voice channel into `serverStatsVoiceChannelId` and the bot renames it to `All Members: {total}` whenever the count changes (respecting Discord's rename rate limit, so up to 10 minutes late).
+
 ## Project structure
 
 ```
@@ -240,7 +249,8 @@ src/
 │   ├── mutes.js          # Muted role + overwrites + assign/remove
 │   ├── roles.js           # Member / Bots / Moderation Bot roles (auto-created, assigned on join)
 │   ├── install.js        # /install + /uninstall (setup checks, setup messages)
-│   ├── status.js         # bot status card (Bot Status / Environment / Websocket)
+│   ├── status.js          # bot status card (Bot Status / Environment / Websocket)
+│   ├── serverstats.js     # server stats card (Members / Online / Server) + All-Members voice sync
 │   ├── trap.js           # do-not-type Warning message + counters
 │   ├── scheduler.js      # temp mute/ban timers (restored on boot)
 │   ├── escalation.js     # auto-mute on warning threshold

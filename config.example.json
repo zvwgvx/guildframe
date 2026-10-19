@@ -15,6 +15,8 @@
   "memberRoleName": "Member",
   "mutedBotCmdsChannelId": "",
   "botStatusChannelId": "",
+  "serverStatsChannelId": "",
+  "serverStatsVoiceChannelId": "",
   "doNotType": {
     "channelId": "",
     "action": "kick",

@@ -8,6 +8,7 @@ import { baseEmbed } from '../utils/embeds.js';
 import { applyMuteOverwritesAll, applyMutedCmdsOverwrite, ensureMuteRole } from './mutes.js';
 import { ensureBotsRole, ensureBotPermsRole, ensureBotRole, ensureMemberRole } from './roles.js';
 import { STATUS_MESSAGE_KEY, refreshStatusMessage } from './status.js';
+import { SERVER_STATS_MESSAGE_KEY, refreshServerStatsMessage } from './serverstats.js';
 import { TRAP_MESSAGE_KEY, applyTrapOpenOverwrite, refreshTrapMessage } from './trap.js';
 
 export const MUTED_CMDS_MESSAGE_KEY = 'muted_cmds';
@@ -16,6 +17,7 @@ export const INSTALL_MESSAGE_LABELS = {
   [TRAP_MESSAGE_KEY]: 'Do-not-type warning message',
   [MUTED_CMDS_MESSAGE_KEY]: 'Muted-commands notice',
   [STATUS_MESSAGE_KEY]: 'Bot status message',
+  [SERVER_STATS_MESSAGE_KEY]: 'Server stats message',
 };
 
 // ---------- Muted-commands notice ----------
@@ -339,7 +341,41 @@ export async function runInstall(client, guild, { installerId = null } = {}) {
     }
   }
 
-  // 9. Channel restrictions everywhere else
+  // 9. Server stats channel + live Server Report card (+ All-Members voice channel sync)
+  if (!config.serverStatsChannelId) {
+    results.push({
+      label: 'Server stats channel',
+      status: 'Not set',
+      detail: 'Add `serverStatsChannelId` to config.json to publish the Server Report card.',
+    });
+  } else {
+    try {
+      const channel = await guild.channels.fetch(config.serverStatsChannelId).catch(() => null);
+      if (!channel || !channel.isTextBased()) {
+        results.push({
+          label: 'Server stats channel',
+          status: 'Failed',
+          detail: 'Channel not found or not text-based. Check `serverStatsChannelId`.',
+        });
+      } else {
+        const stored = getInstallMessage(guild.id, SERVER_STATS_MESSAGE_KEY);
+        const message = await refreshServerStatsMessage(client);
+        results.push({
+          label: 'Server stats channel',
+          status: message ? (stored ? 'Updated' : 'Created') : 'Failed',
+          detail: message
+            ? `<#${channel.id}> - Server Report card ${stored ? 'refreshed' : 'posted'} (members, online and server info; auto-updates every minute)${
+                config.serverStatsVoiceChannelId ? ' - All-Members voice channel name kept in sync' : ''
+              }`
+            : 'Could not post the Server Report (check permissions).',
+        });
+      }
+    } catch (err) {
+      results.push({ label: 'Server stats channel', status: 'Failed', detail: err.message });
+    }
+  }
+
+  // 10. Channel restrictions everywhere else
   if (muteRole) {
     try {
       const { ok, failed } = await applyMuteOverwritesAll(guild, muteRole);
@@ -355,7 +391,7 @@ export async function runInstall(client, guild, { installerId = null } = {}) {
     }
   }
 
-  // 10. Best-effort ordering (top to bottom): muted > member > bots > bot (visible) > perms (hidden).
+  // 11. Best-effort ordering (top to bottom): muted > member > bots > bot (visible) > perms (hidden).
   // With Administrator the bot ignores role positions, so the perms role can rest at the very bottom.
   if (permsRole && memberRole && botsRole && botRole && muteRole) {
     const desired = [muteRole, memberRole, botsRole, botRole, permsRole];

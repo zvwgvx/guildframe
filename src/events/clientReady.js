@@ -3,6 +3,7 @@ import { config } from '../config.js';
 import { refreshMutedCmdsNotice } from '../services/install.js';
 import { initScheduler } from '../services/scheduler.js';
 import { refreshStatusMessage, startStatusLoop } from '../services/status.js';
+import { refreshServerStatsMessage, startServerStatsLoop } from '../services/serverstats.js';
 import { refreshTrapMessage } from '../services/trap.js';
 
 export const name = Events.ClientReady;
@@ -24,4 +25,8 @@ export async function execute(client) {
   );
   await refreshStatusMessage(client).catch((err) => console.error('[status] Initial refresh failed:', err.message));
   startStatusLoop(client);
+  await refreshServerStatsMessage(client).catch((err) =>
+    console.error('[serverStats] Initial refresh failed:', err.message),
+  );
+  startServerStatsLoop(client);
 }

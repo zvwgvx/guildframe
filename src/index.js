@@ -15,6 +15,7 @@ const client = new Client({
     GatewayIntentBits.GuildMessages, // prefix commands
     GatewayIntentBits.MessageContent, // enable "Message Content Intent" in the Developer Portal
     GatewayIntentBits.GuildModeration, // ban/unban events + audit log entries
+    GatewayIntentBits.GuildPresences, // enable "Presence Intent" in the Developer Portal (live online counts)
   ],
 });
 
