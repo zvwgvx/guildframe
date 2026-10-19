@@ -252,7 +252,7 @@ export async function runInstall(client, guild, { installerId = null } = {}) {
           label: 'Muted-commands channel',
           status: message ? (stored ? 'Updated' : 'Created') : 'Failed',
           detail: message
-            ? `<#${channel.id}> - muted users keep access here`
+            ? `<#${channel.id}> - visible to muted users (with commands) and staff only; everyone else is locked out`
             : 'Could not post the notice (check permissions).',
         });
       }

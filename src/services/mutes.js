@@ -54,16 +54,61 @@ export function mutedCmdsOverwriteOptions(channel) {
     ViewChannel: true,
     SendMessages: true,
     SendMessagesInThreads: true,
-    AddReactions: true,
+    AddReactions: false,
+    ReadMessageHistory: true,
+    UseApplicationCommands: true,
   };
+}
+
+// @everyone is locked out of the muted-commands channel; muted users/staff/the bot keep explicit allows.
+export function mutedCmdsEveryoneOptions(channel) {
+  if (channel.isVoiceBased()) return { ViewChannel: false, Connect: false, SendMessages: false };
+  return {
+    ViewChannel: false,
+    SendMessages: false,
+    AddReactions: false,
+    CreatePublicThreads: false,
+    CreatePrivateThreads: false,
+  };
+}
+
+export async function applyMutedCmdsOverwrite(channel, role, reason = 'Allow muted users to use commands here') {
+  const guild = channel.guild;
+
+  // Hide the channel from everyone else.
+  await channel.permissionOverwrites.edit(guild.roles.everyone, mutedCmdsEveryoneOptions(channel), { reason });
+
+  // Muted users keep full access (view + chat + slash commands).
+  await channel.permissionOverwrites.edit(role, mutedCmdsOverwriteOptions(channel), { reason });
+
+  // Staff keeps access to watch what muted users are doing there.
+  if (config.modRoleId && config.modRoleId !== role.id) {
+    const modRole = guild.roles.cache.get(config.modRoleId) ?? (await guild.roles.fetch(config.modRoleId).catch(() => null));
+    if (modRole) {
+      await channel.permissionOverwrites.edit(
+        modRole,
+        channel.isVoiceBased()
+          ? { ViewChannel: true, Connect: true, Speak: true }
+          : { ViewChannel: true, SendMessages: true, ReadMessageHistory: true, UseApplicationCommands: true },
+        { reason },
+      );
+    }
+  }
+
+  // The bot must still be able to post/refresh its notice in the sealed channel.
+  const botRole =
+    (config.botRoleId ? guild.roles.cache.get(config.botRoleId) : null) ?? guild.members.me?.roles.highest ?? null;
+  if (botRole && botRole.id !== role.id) {
+    await channel.permissionOverwrites.edit(
+      botRole,
+      { ViewChannel: true, SendMessages: true, EmbedLinks: true, ReadMessageHistory: true },
+      { reason },
+    );
+  }
 }
 
 export async function applyMuteOverwrite(channel, role, reason = 'Apply Muted role restrictions') {
   await channel.permissionOverwrites.edit(role, muteOverwriteOptions(channel), { reason });
-}
-
-export async function applyMutedCmdsOverwrite(channel, role, reason = 'Allow muted users to use commands here') {
-  await channel.permissionOverwrites.edit(role, mutedCmdsOverwriteOptions(channel), { reason });
 }
 
 // Applies the overwrite to every existing channel (categories are skipped).

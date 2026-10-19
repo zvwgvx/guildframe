@@ -19,7 +19,7 @@ Discord moderation bot with **role-based mutes**, **warnings + offence count**, 
 | Audit log | Ban / unban / kick / timeout / manual Muted-role changes performed directly in Discord are caught via the audit log and logged with the executor. |
 | Temp ban | `/ban user duration:` or `=ban <user> <duration> [reason]` - unbanned automatically on expiry. |
 | Do-not-type trap | Any message posted in `doNotType.channelId` is logged with a mod-role ping and the author is auto-**kicked** by default (`action: kick`; alternatives `alert` / `mute` / `ban` - never applied to real bot accounts, those only trigger the alert). A kicked user also has **every message they sent in the last 30 minutes purged server-wide** (`doNotType.purgeMinutes`, 0 = off). A persistent **Warning** sticker with live counter buttons (Caught / Muted / Kicked / Banned) is kept in the channel automatically. |
-| Muted-commands channel | Muted users keep access to `mutedBotCmdsChannelId` so they can still use bot commands there (`=puns` / `/history` on themselves, `=help`). A notice embed is kept in the channel automatically. |
+| Muted-commands channel | `mutedBotCmdsChannelId` is **visible to muted users and staff only** (`@everyone` is locked out; muted users + mods + the bot keep explicit allows) so muted users can still use bot commands there (`=puns` / `/history` on themselves, `=help`). A notice embed is kept in the channel automatically. |
 | Roles | `/install` creates the whole role stack: **Moderation Bot** (the bot's own role, made first so it sits on top), **Bots** (auto-assigned to bot accounts, incl. on join), **Muted** and **Member** (basic view + chat access; restricted categories are configured separately in Discord). |
 | Bot status | A live **Status Report** card (Components V2) in `botStatusChannelId`: Bot Status (CPU cores/usage, memory, uptime), Environment (Node.js / discord.js / platform / bot version) and Websocket (ping, shards, state). Refreshed every minute. |
 | Install / Uninstall | `/install` checks every configured role/channel, applies the setup and posts/refreshes the setup messages (overwrites existing ones). `/uninstall` deletes those messages again. |
@@ -190,10 +190,10 @@ Note: inside the muted-commands channel, muted users can run `/history` / `/puni
 
 ### Muted-commands channel
 
-- `mutedBotCmdsChannelId` is excluded from the mute overwrites: the Muted role is explicitly **allowed** to view and type there, so muted users can still talk to the bot.
+- `mutedBotCmdsChannelId` is **sealed for everyone else**: `@everyone` loses `View Channel` / `Send Messages` there, while the Muted role keeps explicit allows (view + chat + slash commands), the mod role keeps read/write access and the bot itself can still post its notice.
 - The bot keeps a notice embed in that channel ("You are muted ... use `=puns` to view your own history").
 - Self-service: inside that channel only, a muted user can run `=puns` / `=h` / `=history` / `=punishments` (no arguments = themselves) and `/history` `/punishments` on themselves without any moderator permission. Everything else still requires permissions.
-- Re-run `/install` after changing `mutedBotCmdsChannelId`; the `channelCreate` event keeps the channel open if it is ever recreated.
+- Re-run `/install` after changing `mutedBotCmdsChannelId`; the `channelCreate` event reshuffles the same restrictions if it is ever recreated.
 
 ### Logging
 
