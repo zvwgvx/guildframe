@@ -1,8 +1,8 @@
 {
-  "name": "moderation-bot",
+  "name": "aio-discord-bot",
   "version": "1.0.0",
   "private": true,
-  "description": "Discord moderation bot - role-based mutes, warnings, offence count, punishment history, audit log",
+  "description": "All-in-one Discord bot - moderation (mutes, warnings, cases, audit log), tickets, dynamic voice rooms, welcome cards and live server stats",
   "type": "module",
   "main": "src/index.js",
   "engines": {
