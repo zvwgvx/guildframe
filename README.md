@@ -102,7 +102,7 @@ npm start
 /install
 ```
 
-Checks every configured role/channel, creates the Muted / Member roles if missing, applies the channel restrictions, posts the setup messages (the Warning sticker in the do-not-type channel, the notice in the muted-commands channel and the live Status Report card in the bot-status channel) and prints a summary embed. Re-running it overwrites/refreshes everything. `/uninstall` deletes the setup messages again.
+Checks every configured role/channel, creates the Muted / Member roles if missing, applies the channel restrictions, posts the setup messages (the Warning sticker in the do-not-type channel, the notice in the muted-commands channel and the live Status Report card in the bot-status channel) and prints a summary embed. The embed includes the server the bot operates in, one status row per role/channel and a final **Report** field listing everything that is not ready yet (`Not set` / `Failed`). Re-running it overwrites/refreshes everything. `/uninstall` deletes the setup messages again.
 
 ## Commands
 

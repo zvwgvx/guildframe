@@ -13,7 +13,12 @@ import {
   setActiveCasesStatus,
 } from '../db.js';
 import { applyWarnEscalation } from '../services/escalation.js';
-import { buildSetupSummaryEmbed, runInstall, runUninstall } from '../services/install.js';
+import {
+  INSTALL_DELAYING_STATUSES,
+  buildSetupSummaryEmbed,
+  runInstall,
+  runUninstall,
+} from '../services/install.js';
 import { logCase } from '../services/log.js';
 import { applyMute, applyMuteOverwritesAll, ensureMuteRole, removeMute } from '../services/mutes.js';
 import { offencesTopEmbed, offencesUserEmbed } from '../services/offencesView.js';
@@ -554,14 +559,15 @@ async function installCommand(message, args, client) {
   }
 
   const results = await runInstall(client, message.guild, { installerId: message.author.id });
-  const failures = results.filter((r) => r.status === 'Failed').length;
+  const pending = results.filter((r) => INSTALL_DELAYING_STATUSES.has(r.status)).length;
   await message.reply({
     embeds: [
       buildSetupSummaryEmbed(results, {
         title: 'Install',
-        description: failures
-          ? 'Setup finished with issues - check the entries below.'
+        description: pending
+          ? 'Setup finished with open items - check the entries below.'
           : 'Setup complete. The setup messages were posted/refreshed in the configured channels.',
+        report: true,
       }),
     ],
   });

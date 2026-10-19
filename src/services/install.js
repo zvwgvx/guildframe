@@ -79,6 +79,28 @@ export async function runInstall(client, guild, { installerId = null } = {}) {
   const results = [];
   let muteRole = null;
 
+  // 0. Server check - the single server this bot is allowed to operate in
+  const configuredGuildId = String(config.guildId || '').trim();
+  if (!configuredGuildId) {
+    results.push({
+      label: 'Server',
+      status: 'Not set',
+      detail: 'Add `guildId` (your server ID) to config.json - the bot does not operate without it.',
+    });
+  } else if (configuredGuildId !== guild.id) {
+    results.push({
+      label: 'Server',
+      status: 'Mismatch',
+      detail: `config.json guildId is ${configuredGuildId}, but this server is ${guild.id} (${guild.name}).`,
+    });
+  } else {
+    results.push({
+      label: 'Server',
+      status: 'OK',
+      detail: `${guild.name} - ID: ${guild.id} - this is where the bot operates.`,
+    });
+  }
+
   // 1. Muted role
   try {
     const existing = await findRole(guild, config.muteRoleId, config.muteRoleName);
@@ -294,12 +316,30 @@ export async function runUninstall(client, guild) {
 
 // ---------- Summary embed ----------
 
-export function buildSetupSummaryEmbed(results, { title, description = null } = {}) {
-  const hasFailure = results.some((r) => r.status === 'Failed');
+// Statuses that keep the install report from being "fully ready".
+export const INSTALL_DELAYING_STATUSES = new Set(['Failed', 'Not set', 'Check permissions', 'Mismatch']);
+
+export function buildSetupSummaryEmbed(results, { title, description = null, report = false } = {}) {
+  const hasFailure = report
+    ? results.some((r) => INSTALL_DELAYING_STATUSES.has(r.status))
+    : results.some((r) => r.status === 'Failed');
   const embed = baseEmbed(hasFailure ? COLORS.warn : COLORS.success).setTitle(title).setTimestamp(Date.now());
   if (description) embed.setDescription(description);
   for (const r of results) {
     embed.addFields({ name: r.label, value: r.detail ? `**${r.status}** - ${r.detail}` : `**${r.status}**` });
+  }
+
+  if (report) {
+    const delaying = results.filter((r) => INSTALL_DELAYING_STATUSES.has(r.status));
+    const ready = results.length - delaying.length;
+    const lines = delaying.length
+      ? [
+          `Ready: **${ready}/${results.length}**.`,
+          `Not ready (${delaying.length}): ${delaying.map((r) => `${r.label} (${r.status})`).join(', ')}`,
+          'Fill the missing IDs in `config.json`, then run this command again.',
+        ]
+      : [`Ready: **${ready}/${results.length}** - the bot is fully set up.`];
+    embed.addFields({ name: 'Report', value: lines.join('\n') });
   }
   return embed;
 }

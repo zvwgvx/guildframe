@@ -1,4 +1,5 @@
 import { Events, MessageFlags } from 'discord.js';
+import { config } from '../config.js';
 import { errorEmbed } from '../utils/embeds.js';
 import { isConfiguredGuild } from '../utils/permissions.js';
 
@@ -7,10 +8,17 @@ export const name = Events.InteractionCreate;
 export async function execute(interaction, client) {
   if (!interaction.inGuild() || !isConfiguredGuild(interaction.guildId)) {
     if (interaction.isRepliable()) {
-      await interaction.reply({
-        content: 'This bot is not configured for this server.',
-        flags: MessageFlags.Ephemeral,
-      });
+      const reason = config.guildId
+        ? `This bot only operates in the configured server (ID: ${config.guildId}).`
+        : 'Open config.json, set `guildId` to your server ID, then restart the bot.';
+      await interaction
+        .reply({
+          embeds: [
+            errorEmbed(reason, 'Bot not configured for this server'),
+          ],
+          flags: MessageFlags.Ephemeral,
+        })
+        .catch(() => {});
     }
     return;
   }
