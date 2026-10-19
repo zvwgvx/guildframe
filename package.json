@@ -11,7 +11,8 @@
   "scripts": {
     "start": "node --env-file=.env src/index.js",
     "dev": "node --watch --env-file=.env src/index.js",
-    "deploy": "node --env-file=.env src/deploy-commands.js"
+    "deploy": "node --env-file=.env src/deploy-commands.js",
+    "ids": "node --env-file=.env scripts/list-ids.js"
   },
   "dependencies": {
     "discord.js": "^14.27.0"
