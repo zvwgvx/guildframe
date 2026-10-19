@@ -17,8 +17,8 @@ export function buildWelcomeCard(member) {
         '```',
         `User ID  · ${member.id}`,
         `Role     · ${config.memberRoleName || 'Member'} (auto-assigned)`,
-        `Joined   · ${ts(Date.now())} (${rel(Date.now())})`,
         '```',
+        `Joined · ${ts(Date.now())} (${rel(Date.now())})`,
       ].join('\n'),
     )
     .setThumbnail(member.user.displayAvatarURL({ size: 256 }))
