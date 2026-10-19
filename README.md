@@ -18,7 +18,7 @@ Discord moderation bot with **role-based mutes**, **warnings + offence count**, 
 | Mod log | Every bot action (including automatic ones) is logged to `modLogChannelId` as a case embed. |
 | Audit log | Ban / unban / kick / timeout / manual Muted-role changes performed directly in Discord are caught via the audit log and logged with the executor. |
 | Temp ban | `/ban user duration:` or `=ban <user> <duration> [reason]` - unbanned automatically on expiry. |
-| Do-not-type trap | Any message posted in `doNotType.channelId` is logged with a mod-role ping and the author is auto-**kicked** by default (`action: kick`; alternatives `alert` / `mute` / `ban` - never applied to real bot accounts, those only trigger the alert). A persistent **Warning** sticker with live counter buttons (Caught / Muted / Kicked / Banned) is kept in the channel automatically. |
+| Do-not-type trap | Any message posted in `doNotType.channelId` is logged with a mod-role ping and the author is auto-**kicked** by default (`action: kick`; alternatives `alert` / `mute` / `ban` - never applied to real bot accounts, those only trigger the alert). A kicked user also has **every message they sent in the last 30 minutes purged server-wide** (`doNotType.purgeMinutes`, 0 = off). A persistent **Warning** sticker with live counter buttons (Caught / Muted / Kicked / Banned) is kept in the channel automatically. |
 | Muted-commands channel | Muted users keep access to `mutedBotCmdsChannelId` so they can still use bot commands there (`=puns` / `/history` on themselves, `=help`). A notice embed is kept in the channel automatically. |
 | Roles | `/install` creates the whole role stack: **Moderation Bot** (the bot's own role, made first so it sits on top), **Bots** (auto-assigned to bot accounts, incl. on join), **Muted** and **Member** (basic view + chat access; restricted categories are configured separately in Discord). |
 | Bot status | A live **Status Report** card (Components V2) in `botStatusChannelId`: Bot Status (CPU cores/usage, memory, uptime), Environment (Node.js / discord.js / platform / bot version) and Websocket (ping, shards, state). Refreshed every minute. |
@@ -60,7 +60,9 @@ CLIENT_ID=__REDACTED__
   "botStatusChannelId": "123...", // channel receiving the live "Status Report" card
   "doNotType": {
     "channelId": "123...",        // the "do not type here" channel
-    "action": "kick"              // kick (default) | alert | mute | ban
+    "action": "kick",             // kick (default) | alert | mute | ban
+    "purgeMinutes": 30            // wipe the kicked user's messages from the last N minutes (0 = off)
+  },
   },
   "warnEscalation": {
     "threshold": 0,               // active warnings needed to auto-mute (0 = off)
@@ -83,10 +85,10 @@ CLIENT_ID=__REDACTED__
 ### 2. Invite the bot
 
 ```
-https://discord.com/oauth2/authorize?client_id=YOUR_CLIENT_ID&permissions=268520582&scope=bot%20applications.commands
+https://discord.com/oauth2/authorize?client_id=YOUR_CLIENT_ID&permissions=268528774&scope=bot%20applications.commands
 ```
 
-Includes: View Channels, Send Messages, Embed Links, Read Message History, Manage Roles, Kick Members, Ban Members, View Audit Log.
+Includes: View Channels, Send Messages, Embed Links, Read Message History, Manage Messages (needed to purge a kicked user's chat history), Manage Roles, Kick Members, Ban Members, View Audit Log.
 
 > `/install` creates the `Moderation Bot` role for this purpose (and tries to assign it to the bot). Because Discord does not let a bot assign roles above its own, make sure the bot's role ends up **above** `Bots`, `Muted` and `Member` in Server Settings -> Roles (drag it to the top).
 
@@ -205,6 +207,7 @@ Note: inside the muted-commands channel, muted users can run `/history` / `/puni
   `Warning` + "DO NOT POST MESSAGES IN THIS CHANNEL, you will be {muted/kicked/banned} from {server} if you do so!" + "This channel is used to catch bots that spam our server."
 - Below it, counter buttons track `Caught`, `Muted`, `Kicked`, `Banned` (counters persist in the database; action buttons appear once used). No emoji anywhere in the UI.
 - Every caught message is logged to the mod log channel with the author, content preview and a jump link.
+- When the trap action is `kick`, the author is kicked and the bot then **purges every message they sent in the last `purgeMinutes` minutes** (default 30) across all channels and active threads it can manage (needs Manage Messages). The result ("Deleted N message(s) from the last 30 minutes in M channel(s).") is shown in the alert embed's `History cleanup` field.
 
 ### Bot status channel
 

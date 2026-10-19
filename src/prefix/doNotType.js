@@ -2,6 +2,7 @@ import { config } from '../config.js';
 import { COLORS } from '../constants.js';
 import { createCase, hideCase } from '../db.js';
 import { applyMute } from '../services/mutes.js';
+import { purgeRecentMessages } from '../services/purge.js';
 import { logCase, sendModLog } from '../services/log.js';
 import { onTrapCaught } from '../services/trap.js';
 import { buildAuditEmbed, truncate } from '../utils/embeds.js';
@@ -46,8 +47,31 @@ export async function handleDoNotType(message, client) {
           reason: 'Posted in the do-not-type channel',
         });
         await member.kick(`Case #${caseRow.case_number} | Posted in the do-not-type channel`);
+
+        // Wipe the user's chat history from the configured window, server-wide.
+        const purgeMinutes = Number(config.doNotType?.purgeMinutes ?? 30);
+        const purge = await purgeRecentMessages(guild, member.id, {
+          windowMs: purgeMinutes * 60 * 1000,
+        }).catch((err) => {
+          console.error('[doNotType] Message purge failed:', err.message);
+          return null;
+        });
+
         await logCase(guild, caseRow, { clientId: client.user.id });
         fields.push({ name: 'Action', value: `Kicked (Case #${caseRow.case_number})`, inline: true });
+        if (purge && !purge.skipped) {
+          fields.push({
+            name: 'History cleanup',
+            value: `Deleted ${purge.deleted} message(s) from the last ${purgeMinutes} minutes in ${purge.channels} channel(s).`,
+            inline: false,
+          });
+        } else if (!purge && purgeMinutes > 0) {
+          fields.push({
+            name: 'History cleanup',
+            value: 'Failed - the bot needs the Manage Messages permission on the affected channels.',
+            inline: false,
+          });
+        }
       } else if (action === 'ban') {
         const caseRow = createCase({
           guildId: guild.id,

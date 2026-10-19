@@ -15,7 +15,8 @@
   "botStatusChannelId": "",
   "doNotType": {
     "channelId": "",
-    "action": "kick"
+    "action": "kick",
+    "purgeMinutes": 30
   },
   "warnEscalation": {
     "threshold": 0,
