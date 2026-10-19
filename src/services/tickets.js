@@ -29,7 +29,8 @@ export const TICKET_PANEL_MESSAGE_KEY = 'ticket_panel';
 export const TICKET_BUTTON_ID = 'ticket_open';
 export const TICKET_CLOSE_BUTTON_ID = 'ticket_close';
 
-// What a ticket participant (owner, staff, added members/roles) may do in the channel.
+// Creation entries accept a flags array for role-type overwrites (verified
+// against the live API) - creator ownership is applied separately via edit.
 const TICKET_MEMBER_ALLOW = [
   PermissionsBitField.Flags.ViewChannel,
   PermissionsBitField.Flags.SendMessages,
@@ -38,10 +39,16 @@ const TICKET_MEMBER_ALLOW = [
   PermissionsBitField.Flags.EmbedLinks,
 ];
 
-const BOT_ALLOW = [
-  ...TICKET_MEMBER_ALLOW,
-  PermissionsBitField.Flags.ManageChannels,
-];
+// The flag boolean form for permissionOverwrites.edit(): passing a flags array
+// as allow through edit() resolves to an EMPTY overwrite on member entries -
+// only the flag boolean form ({ ViewChannel: true, ... }) is reliable there.
+const TICKET_MEMBER_FLAGS = {
+  ViewChannel: true,
+  SendMessages: true,
+  ReadMessageHistory: true,
+  AttachFiles: true,
+  EmbedLinks: true,
+};
 
 const section = (title, lines) => `**${title}**\n\`\`\`\n${lines.join('\n')}\n\`\`\``;
 
@@ -147,7 +154,6 @@ export async function openTicket(interaction, client) {
   const staffRoleId = config.tickets.staffRoleId;
 
   const overwrites = [{ id: guild.roles.everyone.id, deny: [PermissionsBitField.Flags.ViewChannel] }];
-  overwrites.push({ id: interaction.user.id, allow: TICKET_MEMBER_ALLOW });
   if (staffRoleId) {
     overwrites.push({ id: staffRoleId, allow: TICKET_MEMBER_ALLOW });
   }
@@ -169,6 +175,12 @@ export async function openTicket(interaction, client) {
     console.error('[tickets] Channel creation failed:', err.message);
     return { error: `Could not create the ticket channel: ${err.message}` };
   }
+
+  // Owner allow uses the flag-object form - the array form produces an empty
+  // overwrite for member entries (verified against the live API).
+  await channel.permissionOverwrites
+    .edit(interaction.user.id, TICKET_MEMBER_FLAGS, { reason: `Ticket owner: ${interaction.user.id}` })
+    .catch((err) => console.error('[tickets] Owner overwrite failed:', err.message));
 
   const ticket = createTicketRow({ guildId: guild.id, channelId: channel.id, ownerId: interaction.user.id });
 
@@ -224,7 +236,11 @@ export async function addToTicket(guild, ticket, target, member) {
   if (!channel) return { error: 'The ticket channel no longer exists.' };
 
   try {
-    await channel.permissionOverwrites.edit(target.id, { allow: TICKET_MEMBER_ALLOW }, { reason: `Added to ticket by ${member.id}` });
+    await channel.permissionOverwrites.edit(
+      target.id,
+      TICKET_MEMBER_FLAGS,
+      { reason: `Added to ticket by ${member.id}` },
+    );
   } catch (err) {
     return { error: `Could not update the channel permissions: ${err.message}` };
   }

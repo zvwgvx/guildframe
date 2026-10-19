@@ -36,12 +36,12 @@ export const CV_INVITE_ID = 'cv_invite';
 
 // Invited members may see, join and use the voice chat. Speak is intentionally
 // not force-allowed so a server-wide mute stays effective.
-const VOICE_MEMBER_ALLOW = [
-  PermissionsBitField.Flags.ViewChannel,
-  PermissionsBitField.Flags.Connect,
-  PermissionsBitField.Flags.SendMessages,
-  PermissionsBitField.Flags.ReadMessageHistory,
-];
+const VOICE_MEMBER_ALLOW = {
+  ViewChannel: true,
+  Connect: true,
+  SendMessages: true,
+  ReadMessageHistory: true,
+};
 
 const LIMIT_OPTIONS = [0, 2, 3, 4, 5, 6, 8, 10];
 
@@ -167,7 +167,7 @@ export async function handleVoiceJoin(oldState, newState) {
 
   // The owner keeps explicit access, required again in private mode.
   await channel.permissionOverwrites
-    .edit(member.id, { allow: VOICE_MEMBER_ALLOW }, { reason: `Voice channel owner: ${member.id}` })
+    .edit(member.id, VOICE_MEMBER_ALLOW, { reason: `Voice channel owner: ${member.id}` })
     .catch(() => {});
 
   const row = createVoiceRow({ guildId: guild.id, channelId: channel.id, ownerId: member.id, number: Number(sequence) });
@@ -239,7 +239,7 @@ export async function toggleVoicePrivacy(interaction) {
       );
       // The owner must keep access, also when reconnecting later.
       await channel.permissionOverwrites
-        .edit(row.owner_id, { allow: VOICE_MEMBER_ALLOW }, { reason: `Voice channel owner: ${row.owner_id}` })
+        .edit(row.owner_id, VOICE_MEMBER_ALLOW, { reason: `Voice channel owner: ${row.owner_id}` })
         .catch(() => {});
     }
   } catch (err) {
@@ -290,7 +290,7 @@ export async function inviteVoiceMembers(interaction) {
     try {
       await channel.permissionOverwrites.edit(
         userId,
-        { allow: VOICE_MEMBER_ALLOW },
+        VOICE_MEMBER_ALLOW,
         { reason: `Invited to voice channel by ${interaction.member.id}` },
       );
       invited.push(userId);
