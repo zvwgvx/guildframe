@@ -172,14 +172,10 @@ export async function openTicket(interaction, client) {
 
   const ticket = createTicketRow({ guildId: guild.id, channelId: channel.id, ownerId: interaction.user.id });
 
-  // Welcome message shown to the opener: mention, basic info, staff tag and the Close button only.
+  // Welcome message shown to the opener: mention, staff tag and the Close button only.
   const welcome = baseEmbed(COLORS.success)
     .setTitle('Ticket')
     .setDescription(`Welcome <@${interaction.user.id}>.`)
-    .addFields(
-      { name: 'Username', value: `> ${interaction.user.username}` },
-      { name: 'Purpose', value: '> .' },
-    )
     .setFooter({ text: 'Note: pinging staff can result in a permanent ticket ban' });
 
   const row = new ActionRowBuilder().addComponents(

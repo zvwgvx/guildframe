@@ -234,7 +234,7 @@ Note: inside the muted-commands channel, muted users can run `/history` / `/puni
 - `tickets.panelChannelId` hosts the panel: a Components V2 card ("Tickets") with a **single** `Open Ticket` button - no multi-button panel.
 - The button creates `ticket-<username>` as a **text channel in the same category as the panel**, with overwrites: `@everyone` denied, the opener and `tickets.staffRoleId` allowed (view/write/attach/embed). The bot itself keeps access to manage the channel.
 - One open ticket per user - pressing the button again points to the existing channel.
-- Welcome card in the new channel: `Ticket` (green accent) - "Welcome @user." - `Username` field - `Purpose` field (placeholder) - footer note "pinging staff can result in a permanent ticket ban" - the opener and the staff role are mentioned and the only button is **Close Ticket** (no claim button).
+- Welcome card in the new channel: `Ticket` (green accent) - "Welcome @user." - footer note "pinging staff can result in a permanent ticket ban" - the opener and the staff role are mentioned and the only button is **Close Ticket** (no claim button).
 - Permissions: `rename` / `add` / `remove` are **ticket-staff only**; `close` is owner or staff (also via the button).
 - Inside the ticket (owner or staff): `/rename` (auto `ticket-` prefix, sanitized), `/add` and `/remove` for users or roles, `/close [note]`: marks the row closed, announces it, writes a **Ticket Closed** entry to the mod log (with the note) and deletes the channel a few seconds later.
 - Everything is stored in the `tickets` table (owner, status, who closed, note, timestamps).
