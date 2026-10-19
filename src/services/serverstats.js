@@ -1,7 +1,13 @@
 // Server stats message: a Components V2 "Server Report" card kept fresh in config.serverStatsChannelId.
 // Sections: Members (all/humans/bots), Online (live presence counts) and Server (boosts/channels/roles/created).
 // Optionally keeps a voice channel (config.serverStatsVoiceChannelId) named "All Members: N".
-import { ContainerBuilder, MessageFlags, TextDisplayBuilder } from 'discord.js';
+import {
+  ContainerBuilder,
+  GatewayIntentBits,
+  IntentsBitField,
+  MessageFlags,
+  TextDisplayBuilder,
+} from 'discord.js';
 import { config } from '../config.js';
 import { COLORS } from '../constants.js';
 import { getInstallMessage, setInstallMessage } from '../db.js';
@@ -17,7 +23,7 @@ const section = (title, lines) => `**${title}**\n\`\`\`\n${lines.join('\n')}\n\`
 
 // ---------- Counting ----------
 
-async function collectMemberStats(guild) {
+async function collectMemberStats(guild, hasPresenceIntent) {
   // Fetch the full member list so the numbers do not depend on the gateway cache.
   const members = await guild.members.fetch().catch(() => null);
   const list = members ?? guild.members.cache;
@@ -30,33 +36,25 @@ async function collectMemberStats(guild) {
     else humans++;
   }
 
-  const hasPresence = guild.presences.cache.size > 0;
-  const status = { online: 0, idle: 0, dnd: 0, offline: 0, unknown: 0 };
+  // Discord only sends presences for online/idle/dnd members - a missing presence is offline.
+  const status = { online: 0, idle: 0, dnd: 0, offline: 0 };
   for (const member of list.values()) {
     if (member.user.bot) continue; // statuses are reported for humans only
-    const presence = guild.presences.cache.get(member.id);
-    const state = presence?.status ?? null;
+    const state = guild.presences.cache.get(member.id)?.status ?? null;
     if (state === 'online') status.online++;
     else if (state === 'idle') status.idle++;
     else if (state === 'dnd') status.dnd++;
-    else if (state === 'offline') status.offline++;
-    else status.unknown++;
+    else status.offline++;
   }
 
-  return { total: list.size, humans, bots, hasPresence, ...status };
+  return { total: list.size, humans, bots, hasPresence: hasPresenceIntent, ...status };
 }
 
 // ---------- Card ----------
 
 export function buildServerStatsContainer(stats) {
   const onlineLines = stats.hasPresence
-    ? [
-        `Online · ${stats.online}`,
-        `Idle · ${stats.idle}`,
-        `Do Not Disturb · ${stats.dnd}`,
-        `Offline · ${stats.offline}`,
-        ...(stats.unknown ? [`Unknown · ${stats.unknown}`] : []),
-      ]
+    ? [`Online · ${stats.online}`, `Idle · ${stats.idle}`, `Do Not Disturb · ${stats.dnd}`, `Offline · ${stats.offline}`]
     : ['Online · unavailable', 'Enable the Presence Intent in the Developer Portal for live counts.'];
 
   return new ContainerBuilder()
@@ -90,8 +88,12 @@ export function buildServerStatsPayload(stats) {
   return { components: [buildServerStatsContainer(stats)], flags: MessageFlags.IsComponentsV2 };
 }
 
-export async function collectServerStats(guild) {
-  const stats = await collectMemberStats(guild);
+export async function collectServerStats(guild, client = null) {
+  // Deterministic intent check instead of relying on whether some presence happens to be cached.
+  const hasPresenceIntent = client
+    ? new IntentsBitField(client.options.intents).has(GatewayIntentBits.GuildPresences)
+    : guild.presences.cache.size > 0;
+  const stats = await collectMemberStats(guild, hasPresenceIntent);
   if (!stats) return null;
   stats.boosts = guild.premiumSubscriptionCount ?? 0;
   stats.boostTier = guild.premiumTier;
@@ -137,7 +139,7 @@ export async function refreshServerStatsMessage(client) {
     return null;
   }
 
-  const stats = await collectServerStats(guild);
+  const stats = await collectServerStats(guild, client);
   if (!stats) {
     console.warn('[serverStats] Member list is not available yet.');
     return null;
