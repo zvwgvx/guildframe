@@ -30,6 +30,22 @@ export function isModerator(member) {
   return isAdministrator(member) || isModRole(member);
 }
 
+// Self-serve lookups (history, offences, warnings list): members holding the
+// configured Member role may look up their own moderation record without any
+// moderator permission. When no member role is configured, any server member
+// may self-view. Moderators always pass.
+export function canSelfView(member) {
+  if (!member) return false;
+  if (isModerator(member)) return true;
+  if (config.memberRoleId) return member.roles.cache.has(config.memberRoleId);
+  return true;
+}
+
+export const selfViewDeniedText = () =>
+  config.memberRoleId
+    ? `Members can look up only their own moderation record - it needs the <@&${config.memberRoleId}> role or a moderator.`
+    : 'Members can look up only their own moderation record.';
+
 // Commands can opt out of the moderator-role bypass (modRoleAllowed: false)
 // to require the actual Discord permission.
 export function hasModPermission(member, permissionFlag, { modRoleAllowed = true } = {}) {

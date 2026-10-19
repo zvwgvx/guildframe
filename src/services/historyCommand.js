@@ -3,9 +3,9 @@ import { MessageFlags, PermissionsBitField, SlashCommandBuilder } from 'discord.
 import { config } from '../config.js';
 import { HISTORY_PAGE_SIZE } from '../constants.js';
 import { listCases } from '../db.js';
-import { buildPunishmentsEmbed, infoEmbed } from '../utils/embeds.js';
+import { buildPunishmentsEmbed, errorEmbed, infoEmbed } from '../utils/embeds.js';
 import { paginateInteraction } from '../utils/paginate.js';
-import { ensureModerator } from '../utils/permissions.js';
+import { canSelfView, ensureModerator, selfViewDeniedText } from '../utils/permissions.js';
 
 const HISTORY_TYPES = ['all', 'warn', 'mute', 'kick', 'ban', 'unmute', 'unban', 'note'];
 const TYPE_CHOICES = [
@@ -22,8 +22,8 @@ const TYPE_CHOICES = [
 export const buildHistoryCommand = (name) =>
   new SlashCommandBuilder()
     .setName(name)
-    .setDescription('View the punishment history of a user')
-    .addUserOption((o) => o.setName('user').setDescription('The user to look up').setRequired(true))
+    .setDescription('View the punishment history of a user (omit user to see your own)')
+    .addUserOption((o) => o.setName('user').setDescription('The user to look up (omit: your own history)'))
     .addStringOption((o) =>
       o.setName('type').setDescription('Filter by case type (default: all)').addChoices(...TYPE_CHOICES),
     );
@@ -31,17 +31,26 @@ export const buildHistoryCommand = (name) =>
 export async function executeHistory(interaction, client) {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-  const user = interaction.options.getUser('user');
+  const requestedUser = interaction.options.getUser('user');
+  const lookingUpSelf = !requestedUser || requestedUser.id === interaction.user.id;
 
   // Inside the muted-commands channel a muted user may look up their own history
-  // without any moderator permission.
+  // without any permission. Everywhere else, members with the Member role may
+  // look up themselves; other users need a moderator.
   const inMutedCmds = Boolean(
     config.mutedBotCmdsChannelId && interaction.channelId === config.mutedBotCmdsChannelId,
   );
-  const selfLookup = inMutedCmds && user.id === interaction.user.id;
-  if (!selfLookup && !(await ensureModerator(interaction, PermissionsBitField.Flags.ManageMessages, 'Manage Messages'))) {
+
+  if (lookingUpSelf) {
+    if (!canSelfView(interaction.member) && !inMutedCmds) {
+      await interaction.editReply({ embeds: [errorEmbed(selfViewDeniedText(), 'Lookup denied')] });
+      return;
+    }
+  } else if (!(await ensureModerator(interaction, PermissionsBitField.Flags.ManageMessages, 'Manage Messages'))) {
     return;
   }
+
+  const user = requestedUser ?? interaction.user;
 
   const requested = (interaction.options.getString('type') ?? 'all').toLowerCase();
   const type = HISTORY_TYPES.includes(requested) ? requested : 'all';

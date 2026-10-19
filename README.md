@@ -136,9 +136,9 @@ Checks every configured role/channel, creates the role stack (Muted, Member, Bot
 | `=ban <user> [duration] [reason]` | Ban (duration optional = temp ban). |
 | `=unban <user id> [reason]` | Remove a ban. |
 | `=warn <user> [reason]` | Warn a member. |
-| `=warnings list <user>` / `=warnings clear <user> [reason]` | View / clear warnings. |
-| `=puns` / `=h` / `=history` / `=punishments <user> [type]` | Punishment history with page buttons. |
-| `=offences [user]` | Offence count (no user = top 10). |
+| `=warnings list [user|empty=you]` / `=warnings clear <user> [reason]` | View / clear warnings. |
+| `=puns` / `=h` / `=history` / `=punishments [user] [type]` | Punishment history with page buttons (empty user = your own; members may self-lookup). |
+| `=offences [user|top]` | Offence counts - no argument = your own; `top` = top 10 (moderator only). |
 | `=case <number>` / `=case delete <number> [reason]` | View / hide a case. |
 | `=rename <new name>` | Rename this ticket (in ticket channels). |
 | `=close [note]` | Close this ticket (channel is removed). |
@@ -172,10 +172,10 @@ Targets accept a **user ID**, a **mention** (`<@123...>`) or a **username**.
 | `/ban user duration: reason: delete_messages:` | Ban / temp ban. |
 | `/unban user_id reason:` | Unban. |
 | `/warn user reason:` | Warn. |
-| `/history user type:` and `/punishments user type:` | Punishment history. |
-| `/offences [user]` | Offence count / top 10. |
+| `/history user type:` and `/punishments user type:` | Punishment history (`user` optional - omit to see your own; members holding the Member role may self-lookup, other users need a moderator). |
+| `/offences user:` `top:` | Offence counts - omit `user` for your own; `top:true` = top 10 (moderators). |
 | `/case view|delete number:` | View or hide a case. |
-| `/warnings list|clear user:` | Manage warnings. |
+| `/warnings list|clear user:` | Manage warnings (`list` without `user` shows your own warnings). |
 | `/rename name:` | Rename this ticket channel (owner/staff only, in ticket channels). |
 | `/close note:` | Close this ticket - the channel is removed shortly after. |
 | `/add user: / role:` | Grant a user or role access to this ticket. |
@@ -184,7 +184,7 @@ Targets accept a **user ID**, a **mention** (`<@123...>`) or a **username**.
 | `/install` | Full setup check: roles, channels, restrictions, setup messages. |
 | `/uninstall` | Delete the setup messages the bot posted in channels. |
 
-Note: inside the muted-commands channel, muted users can run `/history` / `/punishments` (and `=puns`) on **themselves** without moderator permissions.
+Note: inside the muted-commands channel, muted users can run `/history` / `/punishments` (and `=puns`) on **themselves** without moderator permissions. Everywhere else, members holding the configured **Member role** may also use `/history` `/punishments` `/offences` `/warnings list` (and the prefix forms) **on themselves** - leaving the user empty shows the caller's own record; looking up another user still requires a moderator, as does `/offences top` and `=warnings clear`.
 
 > Users with the configured `modRoleId` (or Administrators) can use every command **except `/ban`, `=ban`, `/kick`, `=kick`** - those require the real Discord **Ban Members** / **Kick Members** permission. All other commands fall back to the matching Discord permission (Manage Roles, Manage Messages, Manage Server).
 

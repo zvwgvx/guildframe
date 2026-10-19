@@ -2,9 +2,9 @@ import { MessageFlags, PermissionsBitField, SlashCommandBuilder } from 'discord.
 import { WARNINGS_PAGE_SIZE } from '../constants.js';
 import { countActiveByType, createCase, setActiveCasesStatus, listCases } from '../db.js';
 import { logCase } from '../services/log.js';
-import { baseEmbed, buildCaseEmbed, infoEmbed, truncate, ts } from '../utils/embeds.js';
+import { baseEmbed, buildCaseEmbed, errorEmbed, infoEmbed, truncate, ts } from '../utils/embeds.js';
 import { paginateInteraction } from '../utils/paginate.js';
-import { ensureModerator } from '../utils/permissions.js';
+import { canSelfView, ensureModerator, selfViewDeniedText } from '../utils/permissions.js';
 
 export const data = new SlashCommandBuilder()
   .setName('warnings')
@@ -12,8 +12,8 @@ export const data = new SlashCommandBuilder()
   .addSubcommand((s) =>
     s
       .setName('list')
-      .setDescription('List warnings')
-      .addUserOption((o) => o.setName('user').setDescription('The user to look up').setRequired(true)),
+      .setDescription('List warnings (omit user to see your own)')
+      .addUserOption((o) => o.setName('user').setDescription('The user to look up (omit: your own warnings)')),
   )
   .addSubcommand((s) =>
     s
@@ -25,17 +25,26 @@ export const data = new SlashCommandBuilder()
 
 export async function execute(interaction, client) {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-  if (!(await ensureModerator(interaction, PermissionsBitField.Flags.ManageMessages, 'Manage Messages'))) {
+
+  const sub = interaction.options.getSubcommand();
+  const requestedUser = interaction.options.getUser('user');
+  const lookingUpSelf = sub === 'list' && (!requestedUser || requestedUser.id === interaction.user.id);
+
+  // 'clear' is always a moderator action; so is listing another user.
+  if (!lookingUpSelf) {
+    if (!(await ensureModerator(interaction, PermissionsBitField.Flags.ManageMessages, 'Manage Messages'))) {
+      return;
+    }
+  } else if (!canSelfView(interaction.member)) {
+    await interaction.editReply({ embeds: [errorEmbed(selfViewDeniedText(), 'Lookup denied')] });
     return;
   }
 
-  const sub = interaction.options.getSubcommand();
-  if (sub === 'list') return handleList(interaction);
+  if (sub === 'list') return handleList(interaction, requestedUser ?? interaction.user);
   return handleClear(interaction, client);
 }
 
-async function handleList(interaction) {
-  const user = interaction.options.getUser('user');
+async function handleList(interaction, user) {
   const { total } = listCases({ guildId: interaction.guildId, userId: user.id, type: 'warn', limit: 1 });
   if (!total) {
     await interaction.editReply({ embeds: [infoEmbed('Warnings', `${user.username} has no warnings.`)] });

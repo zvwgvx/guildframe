@@ -45,7 +45,12 @@ import {
   ts,
 } from '../utils/embeds.js';
 import { paginateMessage } from '../utils/paginate.js';
-import { canModerateMemberMessage, ensureModeratorMessage } from '../utils/permissions.js';
+import {
+  canModerateMemberMessage,
+  canSelfView,
+  ensureModeratorMessage,
+  selfViewDeniedText,
+} from '../utils/permissions.js';
 
 const ALIASES = {
   mute: 'mute',
@@ -378,19 +383,26 @@ async function warnCommand(message, args, client) {
 async function historyCommand(message, args, client) {
   const inMutedCmds = Boolean(config.mutedBotCmdsChannelId && message.channelId === config.mutedBotCmdsChannelId);
 
-  // Inside the muted-commands channel a muted user may look up their own history
-  // (no arguments = their own) without any moderator permission.
-  let target = null;
-  if (inMutedCmds) {
-    target = args[0] ? await resolveTarget(message.guild, args[0]) : message.member;
-    if (!target || target.id !== message.author.id) {
-      if (!ensureModeratorMessage(message, PermissionsBitField.Flags.ManageMessages, 'Manage Messages')) return;
+  // No target: the caller's own history (members holding the Member role may
+  // use this; in the muted-commands channel it is always allowed). A target
+  // other than the caller still needs a moderator.
+  let target;
+  if (!args[0]) {
+    if (!canSelfView(message.member) && !inMutedCmds) {
+      return message.reply({ embeds: [errorEmbed(selfViewDeniedText(), 'Lookup denied')] });
     }
+    target = message.member;
   } else {
-    if (!ensureModeratorMessage(message, PermissionsBitField.Flags.ManageMessages, 'Manage Messages')) return;
     target = await resolveTarget(message.guild, args[0]);
+    if (!target) {
+      return message.reply({ embeds: [errorEmbed('User not found. Mention them, provide an ID, or type their username.')] });
+    }
+    if (target.id !== message.author.id) {
+      if (!ensureModeratorMessage(message, PermissionsBitField.Flags.ManageMessages, 'Manage Messages')) return;
+    } else if (!canSelfView(message.member) && !inMutedCmds) {
+      return message.reply({ embeds: [errorEmbed(selfViewDeniedText(), 'Lookup denied')] });
+    }
   }
-  if (!target) return message.reply({ embeds: [errorEmbed('User not found. Mention them, provide an ID, or type their username.')] });
 
   const user = toUser(target);
   const type = HISTORY_TYPES.includes((args[1] ?? '').toLowerCase()) ? args[1].toLowerCase() : 'all';
@@ -419,12 +431,22 @@ async function historyCommand(message, args, client) {
   await paginateMessage(sent, { totalPages, render, authorId: message.author.id });
 }
 
-async function offencesCommand(message, args, client) {
-  if (!ensureModeratorMessage(message, PermissionsBitField.Flags.ManageMessages, 'Manage Messages')) return;
-
+async function offencesCommand(message, args) {
+  // No target: the caller's own offence counts (members included).
   if (!args[0]) {
+    if (!canSelfView(message.member)) {
+      return message.reply({ embeds: [errorEmbed(selfViewDeniedText(), 'Lookup denied')] });
+    }
+    return message.reply({ embeds: [offencesUserEmbed(message.guild.id, toUser(message.member))] });
+  }
+
+  // =offences top: the moderator-only top 10.
+  if ((args[0] ?? '').toLowerCase() === 'top') {
+    if (!ensureModeratorMessage(message, PermissionsBitField.Flags.ManageMessages, 'Manage Messages')) return;
     return message.reply({ embeds: [offencesTopEmbed(message.guild.id)] });
   }
+
+  if (!ensureModeratorMessage(message, PermissionsBitField.Flags.ManageMessages, 'Manage Messages')) return;
 
   const target = await resolveTarget(message.guild, args[0]);
   if (!target) return message.reply({ embeds: [errorEmbed('User not found. Mention them, provide an ID, or type their username.')] });
@@ -471,23 +493,43 @@ async function caseCommand(message, args, client) {
   await message.reply({ embeds: [buildCaseEmbed(caseRow, { clientId: client.user.id })] });
 }
 
-// =warnings list <user> | =warnings clear <user> [reason] (mirrors /warnings)
+// =warnings list <user|empty=you> | =warnings clear <user> [reason] (mirrors /warnings)
 async function warningsCommand(message, args, client) {
-  if (!ensureModeratorMessage(message, PermissionsBitField.Flags.ManageMessages, 'Manage Messages')) return;
-
   const sub = (args[0] ?? '').toLowerCase();
   if (sub !== 'list' && sub !== 'clear') {
     return message.reply({
       embeds: [
         errorEmbed(
-          `Usage: \`${config.prefix}warnings list <user>\` or \`${config.prefix}warnings clear <user> [reason]\``,
+          `Usage: \`${config.prefix}warnings list <user|empty for you>\` or \`${config.prefix}warnings clear <user> [reason]\``,
         ),
       ],
     });
   }
 
-  const target = await resolveTarget(message.guild, args[1]);
-  if (!target) return message.reply({ embeds: [errorEmbed('User not found. Mention them, provide an ID, or type their username.')] });
+  let target;
+  if (sub === 'clear') {
+    if (!ensureModeratorMessage(message, PermissionsBitField.Flags.ManageMessages, 'Manage Messages')) return;
+    if (!args[1]) {
+      return message.reply({
+        embeds: [errorEmbed(`Usage: \`${config.prefix}warnings clear <user> [reason]\``)],
+      });
+    }
+  } else if (!args[1]) {
+    // No user given: view your own warnings (members included).
+    if (!canSelfView(message.member)) {
+      return message.reply({ embeds: [errorEmbed(selfViewDeniedText(), 'Lookup denied')] });
+    }
+    target = message.member;
+  } else {
+    if (!ensureModeratorMessage(message, PermissionsBitField.Flags.ManageMessages, 'Manage Messages')) return;
+  }
+
+  if (sub === 'clear' || args[1]) {
+    target = await resolveTarget(message.guild, args[1]);
+    if (!target) {
+      return message.reply({ embeds: [errorEmbed('User not found. Mention them, provide an ID, or type their username.')] });
+    }
+  }
   const user = toUser(target);
 
   if (sub === 'list') {
@@ -705,9 +747,9 @@ function helpCommand(message) {
     `**\`${p}ban\` <user> [duration] [reason]** - ban a member (duration optional)`,
     `**\`${p}unban\` <user id> [reason]** - remove a ban`,
     `**\`${p}warn\` <user> [reason]** - warn a member`,
-    `**\`${p}warnings list\` <user>** | **\`${p}warnings clear\` <user> [reason]** - view / clear warnings`,
-    `**\`${p}puns\` | \`${p}h\` | \`${p}history\` | \`${p}punishments\` <user> [type]** - punishment history`,
-    `**\`${p}offences\` [user]** - offence count (no user = top 10)`,
+    `**\`${p}warnings list\` [user | empty = you]** | **\`${p}warnings clear\` <user> [reason]** - view / clear warnings`,
+    `**\`${p}puns\` | \`${p}h\` | \`${p}history\` | \`${p}punishments\` [user] [type]** - punishment history (empty user = your own)`,
+    `**\`${p}offences\` [user]** - offence counts (empty = your own; \`${p}offences top\` = top 10, moderator only)`,
     `**\`${p}case\` <number>** | **\`${p}case delete\` <number> [reason]** - view / hide a case`,
     `**\`${p}setup\`** - create the Muted role + apply channel restrictions`,
     `**\`${p}install\`** - full setup check (roles, channels, setup messages)`,
