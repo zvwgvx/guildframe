@@ -94,10 +94,10 @@ export async function applyTrapOpenOverwrite(channel, reason = 'Keep the do-not-
   const guild = channel.guild;
   await channel.permissionOverwrites.edit(guild.roles.everyone, trapEveryoneOptions(channel), { reason });
 
-  // The bot itself keeps posting/refreshing the Warning sticker.
+  // The bot itself keeps posting/refreshing the Warning sticker (never @everyone - that is the allow).
   const botRole =
     (config.botRoleId ? guild.roles.cache.get(config.botRoleId) : null) ?? guild.members.me?.roles.highest ?? null;
-  if (botRole) {
+  if (botRole && botRole.id !== guild.id) {
     await channel.permissionOverwrites.edit(
       botRole,
       { ViewChannel: true, SendMessages: true, EmbedLinks: true, ReadMessageHistory: true },

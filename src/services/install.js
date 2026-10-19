@@ -6,7 +6,7 @@ import { COLORS } from '../constants.js';
 import { deleteInstallMessage, getInstallMessage, listInstallMessages, setInstallMessage } from '../db.js';
 import { baseEmbed } from '../utils/embeds.js';
 import { applyMuteOverwritesAll, applyMutedCmdsOverwrite, ensureMuteRole } from './mutes.js';
-import { ensureBotsRole, ensureBotRole, ensureMemberRole } from './roles.js';
+import { ensureBotsRole, ensureBotPermsRole, ensureBotRole, ensureMemberRole } from './roles.js';
 import { STATUS_MESSAGE_KEY, refreshStatusMessage } from './status.js';
 import { TRAP_MESSAGE_KEY, applyTrapOpenOverwrite, refreshTrapMessage } from './trap.js';
 
@@ -81,6 +81,7 @@ export async function runInstall(client, guild, { installerId = null } = {}) {
   let memberRole = null;
   let botsRole = null;
   let botRole = null;
+  let permsRole = null;
 
   // 0. Server check - the single server this bot is allowed to operate in
   const configuredGuildId = String(config.guildId || '').trim();
@@ -104,22 +105,42 @@ export async function runInstall(client, guild, { installerId = null } = {}) {
     });
   }
 
-  // 1. Dedicated role for this bot (created first so it sits above the other created roles)
+  // 1. Bot role (visible bot identity - sits below Member and carries no permissions)
   try {
     const existing = await findRole(guild, config.botRoleId, config.botRoleName);
     botRole = await ensureBotRole(guild, { reason: by });
-    const assignedToSelf = existing
-      ? false
-      : await guild.members.me.roles.add(botRole, by).then(() => true).catch(() => false);
     results.push({
       label: 'Bot role',
       status: existing ? 'OK' : 'Created',
-      detail: assignedToSelf
-        ? `<@&${botRole.id}> - assigned to the bot. Drag it to the top of the role list.`
-        : `<@&${botRole.id}> - assign it to the bot and drag it to the top of the role list (Discord does not let the bot assign roles above its own).`,
+      detail: `<@&${botRole.id}> - visible bot role, placed below Member and carries no permissions itself (the powers live in the hidden perms role).`,
     });
   } catch (err) {
     results.push({ label: 'Bot role', status: 'Failed', detail: err.message });
+  }
+
+  // 2. Hidden perms role (carries the bot's actual powers; does not display separately)
+  try {
+    const existing = await findRole(guild, config.botPermsRoleId, config.botPermsRoleName);
+    permsRole = await ensureBotPermsRole(guild, { reason: by });
+    const assigned =
+      existing
+        ? false
+        : await guild.members.me.roles
+            .add(permsRole, by)
+            .then(() => true)
+            .catch(() => false);
+    if (botRole) {
+      await guild.members.me.roles.add(botRole, by).catch(() => {});
+    }
+    results.push({
+      label: 'Bot perms role',
+      status: existing ? 'OK' : 'Created',
+      detail: `<@&${permsRole.id}> - hidden role with the bot's powers${
+        assigned ? ', assigned to the bot' : ' - assign it to the bot'
+      }. It does not show in member profiles; keep it above Member / Bots / Muted in the role list so the bot can grant and revoke those roles.`,
+    });
+  } catch (err) {
+    results.push({ label: 'Bot perms role', status: 'Failed', detail: err.message });
   }
 
   // 2. Bots role (shared role for bot accounts)
@@ -311,15 +332,19 @@ export async function runInstall(client, guild, { installerId = null } = {}) {
     }
   }
 
-  // 10. Best-effort ordering of the created role stack: bot > bots > muted > member
-  if (botRole && botsRole && muteRole && memberRole) {
-    try {
-      const base = Math.min(memberRole.position, muteRole.position, botsRole.position, botRole.position);
-      await muteRole.edit({ position: base + 1 }).catch(() => {});
-      await botsRole.edit({ position: base + 2 }).catch(() => {});
-      await botRole.edit({ position: base + 3 }).catch(() => {});
-    } catch {
-      // Reordering is not allowed until the bot role is assigned and raised; the summary explains it.
+  // 10. Best-effort ordering (top to bottom): perms (hidden) > member > bots > bot > muted.
+  // BOT roles (and the punishment role) must sit below Member; the hidden perms role stays on
+  // top so the bot can grant/revoke every role below it.
+  if (permsRole && memberRole && botsRole && botRole && muteRole) {
+    const desired = [permsRole, memberRole, botsRole, botRole, muteRole];
+    for (let i = 1; i < desired.length; i++) {
+      try {
+        if (desired[i].position >= desired[i - 1].position) {
+          await desired[i].edit({ position: desired[i - 1].position, reason: by });
+        }
+      } catch {
+        // Discord forbids moving roles the bot cannot manage - the summary covers the manual step.
+      }
     }
   }
 

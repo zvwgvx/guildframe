@@ -14,6 +14,8 @@ const DEFAULT_FILE_CONFIG = {
   modLogChannelId: '',
   botRoleId: '',
   botRoleName: 'Moderation Bot',
+  botPermsRoleId: '',
+  botPermsRoleName: 'Bot Perms',
   botsRoleId: '',
   botsRoleName: 'Bots',
   memberRoleId: '',

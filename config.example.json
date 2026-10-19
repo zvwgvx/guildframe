@@ -7,6 +7,8 @@
   "modLogChannelId": "",
   "botRoleId": "",
   "botRoleName": "Moderation Bot",
+  "botPermsRoleId": "",
+  "botPermsRoleName": "Bot Perms",
   "botsRoleId": "",
   "botsRoleName": "Bots",
   "memberRoleId": "",

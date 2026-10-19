@@ -7,6 +7,8 @@
   "modLogChannelId": "1561666333232468100",
   "botRoleId": "1544062946655740035",
   "botRoleName": "SENTIA",
+  "botPermsRoleId": "",
+  "botPermsRoleName": "SENTIA Perms",
   "botsRoleId": "1409528372085919855",
   "botsRoleName": "Bot",
   "memberRoleId": "1409121941377384550",

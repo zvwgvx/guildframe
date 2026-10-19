@@ -96,9 +96,10 @@ export async function applyMutedCmdsOverwrite(channel, role, reason = 'Allow mut
   }
 
   // The bot must still be able to post/refresh its notice in the sealed channel.
+  // Never fall back to @everyone here - an allow for @everyone would unseal the channel.
   const botRole =
     (config.botRoleId ? guild.roles.cache.get(config.botRoleId) : null) ?? guild.members.me?.roles.highest ?? null;
-  if (botRole && botRole.id !== role.id) {
+  if (botRole && botRole.id !== role.id && botRole.id !== guild.id) {
     await channel.permissionOverwrites.edit(
       botRole,
       { ViewChannel: true, SendMessages: true, EmbedLinks: true, ReadMessageHistory: true },

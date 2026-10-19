@@ -20,7 +20,7 @@ Discord moderation bot with **role-based mutes**, **warnings + offence count**, 
 | Temp ban | `/ban user duration:` or `=ban <user> <duration> [reason]` - unbanned automatically on expiry. |
 | Do-not-type trap | Any message posted in `doNotType.channelId` is logged with a mod-role ping and the author is auto-**kicked** by default (`action: kick`; alternatives `alert` / `mute` / `ban` - never applied to real bot accounts, those only trigger the alert). The channel always stays **open to `@everyone`** so bots, selfbots and people without the Member role are caught too. A kicked user also has **every message they sent in the last 30 minutes purged server-wide** (`doNotType.purgeMinutes`, 0 = off). A persistent **Warning** sticker with live counter buttons (Caught / Muted / Kicked / Banned) is kept in the channel automatically. |
 | Muted-commands channel | `mutedBotCmdsChannelId` is **visible to muted users and staff only** (`@everyone` is locked out; muted users + mods + the bot keep explicit allows) so muted users can still use bot commands there (`=puns` / `/history` on themselves, `=help`). A notice embed is kept in the channel automatically. |
-| Roles | `/install` creates the whole role stack: **Moderation Bot** (the bot's own role, made first so it sits on top), **Bots** (auto-assigned to bot accounts, incl. on join), **Muted** and **Member** (basic view + chat access; restricted categories are configured separately in Discord). |
+| Roles | `/install` creates the whole role stack: **Bot Perms** (hidden role with the bot's powers, sits on top), **Member** (basic view + chat), **Bots** and the visible bot identity role - both below Member; plus **Muted**. |
 | Bot status | A live **Status Report** card (Components V2) in `botStatusChannelId`: Bot Status (CPU cores/usage, memory, uptime), Environment (Node.js / discord.js / platform / bot version) and Websocket (ping, shards, state). Refreshed every minute. |
 | Install / Uninstall | `/install` checks every configured role/channel, applies the setup and posts/refreshes the setup messages (overwrites existing ones). `/uninstall` deletes those messages again. |
 
@@ -54,8 +54,10 @@ CLIENT_ID=__REDACTED__
   "memberRoleName": "Member",     // name used when the bot creates the member role
   "botsRoleId": "123...",         // shared role for bot accounts (auto-created by /install)
   "botsRoleName": "Bots",         // name used when the bot creates the bots role
-  "botRoleId": "123...",          // this bot's own role (auto-created by /install, place it on top)
+  "botRoleId": "123...",          // visible bot identity role (no powers, below Member)
   "botRoleName": "Moderation Bot", // name used when the bot creates its own role
+  "botPermsRoleId": "123...",     // hidden role carrying the bot's powers (auto-created, keep it on top)
+  "botPermsRoleName": "Bot Perms", // name used when the bot creates the hidden perms role
   "mutedBotCmdsChannelId": "123...", // channel muted users can still talk in to use commands
   "botStatusChannelId": "123...", // channel receiving the live "Status Report" card
   "doNotType": {
@@ -177,11 +179,12 @@ Note: inside the muted-commands channel, muted users can run `/history` / `/puni
 
 ### Roles
 
-`/install` makes sure these four roles exist (created in this order, which also stacks them):
-1. **Moderation Bot** (`botRoleName`) - the bot's own role; gets `Manage Roles`, `Kick Members`, `Ban Members`, `View Audit Log`. The installer tries to assign it to the bot; afterwards drag it to the top of the role list (Discord forbids a bot from editing roles above its own, so it cannot fully move it itself).
-2. **Bots** (`botsRoleName`) - shared role for bot accounts. Assigned to every bot already in the server during `/install`, and to every bot that joins later.
-3. **Muted** (`muteRoleName`) - no granted permissions; viewing stays intact, chatting is denied via the channel overwrites.
-4. **Member** (`memberRoleName`) - basic access: `View Channels`, `Send Messages`, `Read Message History`. Assigned automatically to every human who joins. Locked-down or restricted categories/channels ("staff only", ...) stay configured by you in Discord - the Member role does not grant anything extra there.
+`/install` makes sure these roles exist, ordered top to bottom in the role list:
+1. **Bot Perms** (`botPermsRoleName`, default `Bot Perms`) - **hidden role that carries all of the bot's powers** (Manage Messages, Manage Roles, Kick, Ban, View Audit Log + basic access). It is not hoisted and colourless, so it never shows in member profiles. It still must sit **above** Member / Bots / Muted in the role list - Discord only lets the bot grant or revoke roles below its own highest role.
+2. **Member** (`memberRoleName`) - basic access: `View Channels`, `Send Messages`, `Read Message History`. Assigned automatically to every human who joins. Above all bot roles. Restricted categories/channels stay configured by you in Discord.
+3. **Bots** (`botsRoleName`) - shared role for bot accounts, **below Member**. Assigned to every bot already in the server and to every bot that joins later.
+4. **Bot identity role** (`botRoleName`, e.g. `SENTIA`) - the visible bot role, **below Member, carries no permissions itself** (the powers live in the hidden perms role above).
+5. **Muted** (`muteRoleName`) - punishment role; viewing stays intact, chatting is denied via channel overwrites.
 
 ### Mute
 

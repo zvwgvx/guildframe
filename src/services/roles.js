@@ -12,7 +12,14 @@ const MEMBER_PERMISSIONS = [
   PermissionsBitField.Flags.ReadMessageHistory,
 ];
 
+// The hidden role that carries all of the bot's powers (subset of the invite permissions
+// so role creation never gets rejected).
 const BOT_PERMISSIONS = [
+  PermissionsBitField.Flags.ViewChannel,
+  PermissionsBitField.Flags.SendMessages,
+  PermissionsBitField.Flags.EmbedLinks,
+  PermissionsBitField.Flags.ReadMessageHistory,
+  PermissionsBitField.Flags.ManageMessages,
   PermissionsBitField.Flags.ManageRoles,
   PermissionsBitField.Flags.KickMembers,
   PermissionsBitField.Flags.BanMembers,
@@ -24,13 +31,22 @@ const NO_PERMISSIONS = [];
 const ROLE_DEFS = {
   member: { idKey: 'memberRoleId', nameKey: 'memberRoleName', permissions: MEMBER_PERMISSIONS, color: 0x57f287 },
   bots: { idKey: 'botsRoleId', nameKey: 'botsRoleName', permissions: NO_PERMISSIONS, color: 0x3498db },
-  bot: { idKey: 'botRoleId', nameKey: 'botRoleName', permissions: BOT_PERMISSIONS, color: 0x5865f2 },
+  // Visible bot identity role - carries no permissions by itself (placed below Member).
+  bot: { idKey: 'botRoleId', nameKey: 'botRoleName', permissions: NO_PERMISSIONS, color: 0x5865f2 },
+  // Hidden role that actually carries the bot's powers (not hoisted, no colour).
+  botPerms: {
+    idKey: 'botPermsRoleId',
+    nameKey: 'botPermsRoleName',
+    permissions: BOT_PERMISSIONS,
+    color: null,
+    hoist: false,
+  },
 };
 
 // Generic find-or-create. New roles spawn at the bottom; creation order in the installer
 // (this bot > Bots > Muted > Member) gives them a sane relative hierarchy.
 async function ensureRole(guild, kind, { createIfMissing = true, reason = 'Role setup' } = {}) {
-  const { idKey, nameKey, permissions, color } = ROLE_DEFS[kind];
+  const { idKey, nameKey, permissions, color, hoist = false } = ROLE_DEFS[kind];
   const id = config[idKey];
   const name = config[nameKey];
 
@@ -43,7 +59,14 @@ async function ensureRole(guild, kind, { createIfMissing = true, reason = 'Role 
   }
   if (!role && !createIfMissing) return null;
   if (!role) {
-    role = await guild.roles.create({ name, color, hoist: false, mentionable: false, permissions, reason });
+    role = await guild.roles.create({
+      name,
+      color,
+      hoist: Boolean(hoist),
+      mentionable: false,
+      permissions,
+      reason,
+    });
     console.log(`[roles] Created the "${role.name}" role (${role.id}).`);
   }
   if (config[idKey] !== role.id) {
@@ -56,3 +79,4 @@ async function ensureRole(guild, kind, { createIfMissing = true, reason = 'Role 
 export const ensureMemberRole = (guild, opts) => ensureRole(guild, 'member', opts);
 export const ensureBotsRole = (guild, opts) => ensureRole(guild, 'bots', opts);
 export const ensureBotRole = (guild, opts) => ensureRole(guild, 'bot', opts);
+export const ensureBotPermsRole = (guild, opts) => ensureRole(guild, 'botPerms', opts);
