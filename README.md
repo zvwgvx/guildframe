@@ -140,7 +140,7 @@ Targets accept a **user ID**, a **mention** (`<@123...>`) or a **username**.
 | `/warnings list|clear user:` | Manage warnings. |
 | `/setup` | Create Muted role + apply channel restrictions. |
 
-> Users with the configured `modRoleId` (or Administrators) can use every command; otherwise the matching Discord permission is required (Manage Roles, Kick Members, Ban Members, Manage Messages, Manage Server).
+> Users with the configured `modRoleId` (or Administrators) can use every command **except `/ban`, `=ban`, `/kick`, `=kick`** - those require the real Discord **Ban Members** / **Kick Members** permission. All other commands fall back to the matching Discord permission (Manage Roles, Manage Messages, Manage Server).
 
 ## How it works
 

@@ -173,7 +173,7 @@ async function unmuteCommand(message, args, client) {
 }
 
 async function kickCommand(message, args, client) {
-  if (!ensureModeratorMessage(message, PermissionsBitField.Flags.KickMembers, 'Kick Members')) return;
+  if (!ensureModeratorMessage(message, PermissionsBitField.Flags.KickMembers, 'Kick Members', { modRoleAllowed: false })) return;
   if (!message.guild.members.me.permissions.has(PermissionsBitField.Flags.KickMembers)) {
     return message.reply({ embeds: [errorEmbed('The bot is missing the **Kick Members** permission.')] });
   }
@@ -212,7 +212,7 @@ async function kickCommand(message, args, client) {
 }
 
 async function banCommand(message, args, client) {
-  if (!ensureModeratorMessage(message, PermissionsBitField.Flags.BanMembers, 'Ban Members')) return;
+  if (!ensureModeratorMessage(message, PermissionsBitField.Flags.BanMembers, 'Ban Members', { modRoleAllowed: false })) return;
   if (!message.guild.members.me.permissions.has(PermissionsBitField.Flags.BanMembers)) {
     return message.reply({ embeds: [errorEmbed('The bot is missing the **Ban Members** permission.')] });
   }

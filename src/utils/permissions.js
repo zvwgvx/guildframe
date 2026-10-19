@@ -18,26 +18,39 @@ export function isConfiguredGuild(guildId) {
   return guildId === config.guildId;
 }
 
-export function isModerator(member) {
-  return (
-    member.permissions.has(PermissionsBitField.Flags.Administrator) ||
-    Boolean(config.modRoleId && member.roles.cache.has(config.modRoleId))
-  );
+export function isAdministrator(member) {
+  return member.permissions.has(PermissionsBitField.Flags.Administrator);
 }
 
-export function hasModPermission(member, permissionFlag) {
-  return isModerator(member) || member.permissions.has(permissionFlag);
+export function isModRole(member) {
+  return Boolean(config.modRoleId && member.roles.cache.has(config.modRoleId));
+}
+
+export function isModerator(member) {
+  return isAdministrator(member) || isModRole(member);
+}
+
+// Commands can opt out of the moderator-role bypass (modRoleAllowed: false)
+// to require the actual Discord permission.
+export function hasModPermission(member, permissionFlag, { modRoleAllowed = true } = {}) {
+  if (member.permissions.has(permissionFlag)) return true;
+  if (isAdministrator(member)) return true;
+  return modRoleAllowed && isModRole(member);
+}
+
+function deniedMessage(permissionLabel, modRoleAllowed) {
+  const base = `You need the **${permissionLabel}** permission`;
+  return modRoleAllowed
+    ? `${base} (or the configured moderator role) to use this command.`
+    : `${base} to use this command - the moderator role is not sufficient.`;
 }
 
 // Returns false (and replies with an error) when the caller is not allowed.
-export async function ensureModerator(interaction, permissionFlag, permissionLabel) {
-  if (isConfiguredGuild(interaction.guildId) && hasModPermission(interaction.member, permissionFlag)) {
+export async function ensureModerator(interaction, permissionFlag, permissionLabel, { modRoleAllowed = true } = {}) {
+  if (isConfiguredGuild(interaction.guildId) && hasModPermission(interaction.member, permissionFlag, { modRoleAllowed })) {
     return true;
   }
-  await replyEphemeral(
-    interaction,
-    errorEmbed(`You need the **${permissionLabel}** permission (or the configured moderator role) to use this command.`),
-  );
+  await replyEphemeral(interaction, errorEmbed(deniedMessage(permissionLabel, modRoleAllowed)));
   return false;
 }
 
@@ -66,11 +79,9 @@ export async function canModerateMember(interaction, targetMember) {
 
 // ---------- Message (prefix command) helpers ----------
 
-export function ensureModeratorMessage(message, permissionFlag, permissionLabel) {
-  if (hasModPermission(message.member, permissionFlag)) return true;
-  message.reply({
-    embeds: [errorEmbed(`You need the **${permissionLabel}** permission (or the configured moderator role) to use this command.`)],
-  });
+export function ensureModeratorMessage(message, permissionFlag, permissionLabel, { modRoleAllowed = true } = {}) {
+  if (hasModPermission(message.member, permissionFlag, { modRoleAllowed })) return true;
+  message.reply({ embeds: [errorEmbed(deniedMessage(permissionLabel, modRoleAllowed))] });
   return false;
 }
 

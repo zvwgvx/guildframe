@@ -30,7 +30,7 @@ export const data = new SlashCommandBuilder()
 export async function execute(interaction, client) {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-  if (!(await ensureModerator(interaction, PermissionsBitField.Flags.BanMembers, 'Ban Members'))) return;
+  if (!(await ensureModerator(interaction, PermissionsBitField.Flags.BanMembers, 'Ban Members', { modRoleAllowed: false }))) return;
   if (!(await ensureBotPermissions(interaction, PermissionsBitField.Flags.BanMembers, 'Ban Members'))) return;
 
   const user = interaction.options.getUser('user');

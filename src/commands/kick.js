@@ -13,7 +13,7 @@ export const data = new SlashCommandBuilder()
 export async function execute(interaction, client) {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-  if (!(await ensureModerator(interaction, PermissionsBitField.Flags.KickMembers, 'Kick Members'))) return;
+  if (!(await ensureModerator(interaction, PermissionsBitField.Flags.KickMembers, 'Kick Members', { modRoleAllowed: false }))) return;
   if (!(await ensureBotPermissions(interaction, PermissionsBitField.Flags.KickMembers, 'Kick Members'))) return;
 
   const member = interaction.options.getMember('user');
