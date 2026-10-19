@@ -116,10 +116,16 @@ Checks every configured role/channel, creates the Muted / Member roles if missin
 | `=ban <user> [duration] [reason]` | Ban (duration optional = temp ban). |
 | `=unban <user id> [reason]` | Remove a ban. |
 | `=warn <user> [reason]` | Warn a member. |
+| `=warnings list <user>` / `=warnings clear <user> [reason]` | View / clear warnings. |
 | `=puns` / `=h` / `=history` / `=punishments <user> [type]` | Punishment history with page buttons. |
 | `=offences [user]` | Offence count (no user = top 10). |
-| `=case <number>` | View a case. |
+| `=case <number>` / `=case delete <number> [reason]` | View / hide a case. |
+| `=setup` | Create the Muted role + apply channel restrictions. |
+| `=install` | Full setup check: roles, channels, restrictions, setup messages. |
+| `=uninstall` | Delete the setup messages the bot posted in channels. |
 | `=help` | List prefix commands. |
+
+> Every slash command has a prefix equivalent (`=install` = `/install`, ...).
 
 Examples:
 

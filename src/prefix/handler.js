@@ -1,7 +1,8 @@
 // Prefix command dispatcher. Usage: =mute <target> [duration] [reason]
+// Every slash command has a prefix equivalent here.
 import { PermissionsBitField } from 'discord.js';
 import { config } from '../config.js';
-import { HISTORY_PAGE_SIZE, MAX_BAN_MS, MAX_MUTE_MS } from '../constants.js';
+import { HISTORY_PAGE_SIZE, MAX_BAN_MS, MAX_MUTE_MS, WARNINGS_PAGE_SIZE } from '../constants.js';
 import {
   countActiveByType,
   createCase,
@@ -14,16 +15,20 @@ import {
   topOffenders,
 } from '../db.js';
 import { applyWarnEscalation } from '../services/escalation.js';
+import { buildSetupSummaryEmbed, runInstall, runUninstall } from '../services/install.js';
 import { logCase } from '../services/log.js';
-import { applyMute, removeMute } from '../services/mutes.js';
+import { applyMute, applyMuteOverwritesAll, ensureMuteRole, removeMute } from '../services/mutes.js';
 import { cancelCaseTimer, scheduleCase } from '../services/scheduler.js';
 import { formatDuration, parseDuration } from '../utils/duration.js';
 import {
+  baseEmbed,
   buildActionEmbed,
   buildCaseEmbed,
   buildPunishmentsEmbed,
   errorEmbed,
   infoEmbed,
+  successEmbed,
+  ts,
 } from '../utils/embeds.js';
 import { paginateMessage } from '../utils/paginate.js';
 import { canModerateMemberMessage, ensureModeratorMessage } from '../utils/permissions.js';
@@ -41,6 +46,10 @@ const ALIASES = {
   punishments: 'history',
   offences: 'offences',
   case: 'case',
+  warnings: 'warnings',
+  setup: 'setup',
+  install: 'install',
+  uninstall: 'uninstall',
   help: 'help',
 };
 
@@ -417,15 +426,171 @@ async function offencesCommand(message, args, client) {
 }
 
 async function caseCommand(message, args, client) {
+  const sub = (args[0] ?? '').toLowerCase();
+
+  // =case delete <number> [reason] (mirrors /case delete)
+  if (sub === 'delete') {
+    if (!ensureModeratorMessage(message, PermissionsBitField.Flags.ManageGuild, 'Manage Server')) return;
+
+    const number = Number.parseInt(args[1] ?? '', 10);
+    if (!Number.isInteger(number) || number < 1) {
+      return message.reply({ embeds: [errorEmbed(`Usage: \`${config.prefix}case delete <number> [reason]\``)] });
+    }
+    const caseRow = getCaseByNumber(message.guild.id, number);
+    if (!caseRow || caseRow.hidden) return message.reply({ embeds: [errorEmbed('Case not found.')] });
+
+    hideCase(caseRow.id);
+    const reason = args.slice(2).join(' ').trim() || null;
+    const noteCase = createCase({
+      guildId: message.guild.id,
+      userId: caseRow.user_id,
+      moderatorId: message.author.id,
+      type: 'note',
+      reason: `Deleted Case #${caseRow.case_number} (${caseRow.type})${reason ? `: ${reason}` : ''}`,
+    });
+    await logCase(message.guild, noteCase, { clientId: client.user.id });
+    return message.reply({ embeds: [buildCaseEmbed(noteCase, { clientId: client.user.id })] });
+  }
+
+  // =case <number> / =case view <number> (mirrors /case view)
   if (!ensureModeratorMessage(message, PermissionsBitField.Flags.ManageMessages, 'Manage Messages')) return;
 
-  const number = Number.parseInt(args[0] ?? '', 10);
+  const number = Number.parseInt((sub === 'view' ? args[1] : args[0]) ?? '', 10);
   if (!Number.isInteger(number) || number < 1) {
     return message.reply({ embeds: [errorEmbed(`Usage: \`${config.prefix}case <number>\``)] });
   }
   const caseRow = getCaseByNumber(message.guild.id, number);
   if (!caseRow || caseRow.hidden) return message.reply({ embeds: [errorEmbed('Case not found.')] });
   await message.reply({ embeds: [buildCaseEmbed(caseRow, { clientId: client.user.id })] });
+}
+
+// =warnings list <user> | =warnings clear <user> [reason] (mirrors /warnings)
+async function warningsCommand(message, args, client) {
+  if (!ensureModeratorMessage(message, PermissionsBitField.Flags.ManageMessages, 'Manage Messages')) return;
+
+  const sub = (args[0] ?? '').toLowerCase();
+  if (sub !== 'list' && sub !== 'clear') {
+    return message.reply({
+      embeds: [
+        errorEmbed(
+          `Usage: \`${config.prefix}warnings list <user>\` or \`${config.prefix}warnings clear <user> [reason]\``,
+        ),
+      ],
+    });
+  }
+
+  const target = await resolveTarget(message.guild, args[1]);
+  if (!target) return message.reply({ embeds: [errorEmbed('User not found. Mention them, provide an ID, or type their username.')] });
+  const user = toUser(target);
+
+  if (sub === 'list') {
+    const { total } = listCases({ guildId: message.guild.id, userId: user.id, type: 'warn', limit: 1 });
+    if (!total) return message.reply({ embeds: [infoEmbed('Warnings', `${user.username} has no warnings.`)] });
+
+    const totalPages = Math.ceil(total / WARNINGS_PAGE_SIZE);
+    const render = (page) => {
+      const { rows } = listCases({
+        guildId: message.guild.id,
+        userId: user.id,
+        type: 'warn',
+        limit: WARNINGS_PAGE_SIZE,
+        offset: page * WARNINGS_PAGE_SIZE,
+      });
+      const lines = rows.map((r) => {
+        const status = r.status === 'active' ? 'Active' : 'Cleared';
+        const reason = (r.reason || 'No reason provided').slice(0, 120);
+        return `**#${r.case_number}** • ${ts(r.created_at, 'R')} • ${status} • by <@${r.moderator_id}>\n> ${reason}`;
+      });
+      return baseEmbed()
+        .setTitle(`Warnings • ${user.username}`)
+        .setDescription(lines.join('\n\n'))
+        .setFooter({ text: `Page ${page + 1}/${totalPages} • Total: ${total}` })
+        .setTimestamp(Date.now());
+    };
+
+    const sent = await message.reply({ embeds: [render(0)] });
+    await paginateMessage(sent, { totalPages, render, authorId: message.author.id });
+    return;
+  }
+
+  // clear
+  const activeCount = countActiveByType(message.guild.id, user.id, 'warn');
+  if (!activeCount) {
+    return message.reply({ embeds: [infoEmbed('Warnings', `${user.username} has no active warnings.`)] });
+  }
+
+  const reason = args.slice(2).join(' ').trim() || null;
+  setActiveCasesStatus(message.guild.id, user.id, 'warn', 'removed');
+  const caseRow = createCase({
+    guildId: message.guild.id,
+    userId: user.id,
+    moderatorId: message.author.id,
+    type: 'note',
+    reason: `Cleared ${activeCount} active warning(s)${reason ? `: ${reason}` : ''}`,
+  });
+  await logCase(message.guild, caseRow, { clientId: client.user.id });
+  await message.reply({ embeds: [buildCaseEmbed(caseRow, { clientId: client.user.id })] });
+}
+
+// =setup (mirrors /setup)
+async function setupCommand(message) {
+  if (!ensureModeratorMessage(message, PermissionsBitField.Flags.ManageGuild, 'Manage Server')) return;
+  if (!message.guild.members.me.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
+    return message.reply({ embeds: [errorEmbed('The bot is missing the **Manage Roles** permission.')] });
+  }
+
+  const role = await ensureMuteRole(message.guild, { reason: `Setup by ${message.author.id}` });
+  const { ok, failed } = await applyMuteOverwritesAll(message.guild, role);
+
+  const lines = [
+    `Muted role: <@&${role.id}>`,
+    `Applied restrictions to **${ok}** channel(s)${failed ? ` (${failed} failed)` : ''}.`,
+    config.modLogChannelId
+      ? `Mod log channel: <#${config.modLogChannelId}>`
+      : 'Mod log channel: not set - add `modLogChannelId` to config.json',
+    '',
+    'New channels are automatically restricted. If the Muted role is deleted, the bot recreates it on the next mute.',
+  ];
+  if (failed) {
+    lines.push('Some channels failed: make sure the bot has **Manage Roles** and its role is above the Muted role.');
+  }
+  await message.reply({ embeds: [successEmbed(lines.join('\n'), 'Setup complete')] });
+}
+
+// =install (mirrors /install)
+async function installCommand(message, args, client) {
+  if (!ensureModeratorMessage(message, PermissionsBitField.Flags.ManageGuild, 'Manage Server')) return;
+  if (!message.guild.members.me.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
+    return message.reply({ embeds: [errorEmbed('The bot is missing the **Manage Roles** permission.')] });
+  }
+
+  const results = await runInstall(client, message.guild, { installerId: message.author.id });
+  const failures = results.filter((r) => r.status === 'Failed').length;
+  await message.reply({
+    embeds: [
+      buildSetupSummaryEmbed(results, {
+        title: 'Install',
+        description: failures
+          ? 'Setup finished with issues - check the entries below.'
+          : 'Setup complete. The setup messages were posted/refreshed in the configured channels.',
+      }),
+    ],
+  });
+}
+
+// =uninstall (mirrors /uninstall)
+async function uninstallCommand(message, args, client) {
+  if (!ensureModeratorMessage(message, PermissionsBitField.Flags.ManageGuild, 'Manage Server')) return;
+
+  const results = await runUninstall(client, message.guild);
+  await message.reply({
+    embeds: [
+      buildSetupSummaryEmbed(results, {
+        title: 'Uninstall',
+        description: `Setup messages were removed. Run \`${config.prefix}install\` to post them again.`,
+      }),
+    ],
+  });
 }
 
 function helpCommand(message) {
@@ -437,9 +602,13 @@ function helpCommand(message) {
     `**\`${p}ban\` <user> [duration] [reason]** - ban a member (duration optional)`,
     `**\`${p}unban\` <user id> [reason]** - remove a ban`,
     `**\`${p}warn\` <user> [reason]** - warn a member`,
+    `**\`${p}warnings list\` <user>** | **\`${p}warnings clear\` <user> [reason]** - view / clear warnings`,
     `**\`${p}puns\` | \`${p}h\` | \`${p}history\` | \`${p}punishments\` <user> [type]** - punishment history`,
     `**\`${p}offences\` [user]** - offence count (no user = top 10)`,
-    `**\`${p}case\` <number>** - view a case`,
+    `**\`${p}case\` <number>** | **\`${p}case delete\` <number> [reason]** - view / hide a case`,
+    `**\`${p}setup\`** - create the Muted role + apply channel restrictions`,
+    `**\`${p}install\`** - full setup check (roles, channels, setup messages)`,
+    `**\`${p}uninstall\`** - delete the setup messages`,
   ];
   return message.reply({ embeds: [infoEmbed('Prefix commands', lines.join('\n'))] });
 }
@@ -454,6 +623,10 @@ const HANDLERS = {
   history: historyCommand,
   offences: offencesCommand,
   case: caseCommand,
+  warnings: warningsCommand,
+  setup: setupCommand,
+  install: installCommand,
+  uninstall: uninstallCommand,
   help: helpCommand,
 };
 
