@@ -2,7 +2,7 @@ import { Events, MessageFlags } from 'discord.js';
 import { config } from '../config.js';
 import { errorEmbed, successEmbed } from '../utils/embeds.js';
 import { isConfiguredGuild } from '../utils/permissions.js';
-import { TICKET_BUTTON_ID, openTicket } from '../services/tickets.js';
+import { TICKET_BUTTON_ID, TICKET_CLOSE_BUTTON_ID, canManageTicket, closeTicket, getTicketForChannel, openTicket } from '../services/tickets.js';
 
 export const name = Events.InteractionCreate;
 
@@ -32,6 +32,29 @@ export async function execute(interaction, client) {
     });
     const embed = result?.error ? errorEmbed(result.error) : successEmbed(`Ticket created: <#${result.channel.id}>`);
     await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral }).catch(() => {});
+    return;
+  }
+
+  // The "Close Ticket" button inside a ticket (owner or staff).
+  if (interaction.isButton() && interaction.customId === TICKET_CLOSE_BUTTON_ID) {
+    const ticket = getTicketForChannel(interaction.guildId, interaction.channelId);
+    if (!ticket) {
+      await interaction.reply({ embeds: [errorEmbed('This channel is not an open ticket.')], flags: MessageFlags.Ephemeral }).catch(() => {});
+      return;
+    }
+    if (!canManageTicket(ticket, interaction.member)) {
+      await interaction
+        .reply({ embeds: [errorEmbed('Only the ticket owner or staff can close this ticket.')], flags: MessageFlags.Ephemeral })
+        .catch(() => {});
+      return;
+    }
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral }).catch(() => {});
+    const result = await closeTicket(interaction.guild, ticket, interaction.member, null, client).catch((err) => {
+      console.error('[tickets] Close failed:', err.message);
+      return { error: 'Closing the ticket failed. Try again in a moment.' };
+    });
+    const embed = result?.error ? errorEmbed(result.error) : successEmbed('Ticket closed. This channel will be removed shortly.');
+    await interaction.editReply({ embeds: [embed] }).catch(() => {});
     return;
   }
 

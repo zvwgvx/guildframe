@@ -27,6 +27,7 @@ import { sendModLog } from './log.js';
 
 export const TICKET_PANEL_MESSAGE_KEY = 'ticket_panel';
 export const TICKET_BUTTON_ID = 'ticket_open';
+export const TICKET_CLOSE_BUTTON_ID = 'ticket_close';
 
 // What a ticket participant (owner, staff, added members/roles) may do in the channel.
 const TICKET_MEMBER_ALLOW = [
@@ -47,15 +48,6 @@ const section = (title, lines) => `**${title}**\n\`\`\`\n${lines.join('\n')}\n\`
 // ---------- Panel ----------
 
 function buildTicketPanelContainer() {
-  const staffRoleId = config.tickets.staffRoleId;
-  const lines = [
-    'Press the button below to open a private ticket.',
-    staffRoleId
-      ? `Only you and <@&${staffRoleId}> can see the channel, nobody else.`
-      : 'Only you and the staff team can see the channel.',
-    'Inside the ticket you can use: /rename • /close • /add • /remove',
-  ];
-
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(TICKET_BUTTON_ID).setLabel('Open Ticket').setStyle(ButtonStyle.Primary),
   );
@@ -63,7 +55,14 @@ function buildTicketPanelContainer() {
   return new ContainerBuilder()
     .setAccentColor(COLORS.info)
     .addTextDisplayComponents(new TextDisplayBuilder().setContent('## Tickets'))
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(section('[ • ] Support', lines)))
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        section('[ • ] Support', [
+          'Press the button below to open a private ticket.',
+          'Only you and the ticket staff can see the channel.',
+        ]),
+      ),
+    )
     .addActionRowComponents(row);
 }
 
@@ -119,7 +118,7 @@ export function getTicketForChannel(guildId, channelId) {
   return row?.status === 'open' ? row : null;
 }
 
-// Owner of the ticket or staff - allowed to rename/add/remove/close.
+// Owner of the ticket or staff - allowed to close the ticket.
 export function canManageTicket(ticket, member) {
   if (!member) return false;
   return member.id === ticket.owner_id || isTicketStaff(member);
@@ -173,30 +172,31 @@ export async function openTicket(interaction, client) {
 
   const ticket = createTicketRow({ guildId: guild.id, channelId: channel.id, ownerId: interaction.user.id });
 
-  const intro = baseEmbed(COLORS.audit)
+  // Welcome message shown to the opener: mention, basic info, staff tag and the Close button only.
+  const welcome = baseEmbed(COLORS.success)
     .setTitle('Ticket')
-    .setDescription(
-      [
-        `Opened by <@${interaction.user.id}> - support will reply here.`,
-        staffRoleId ? `Visible to: <@${interaction.user.id}> and <@&${staffRoleId}>.` : 'Visible to: you and the staff team.',
-        'Commands: `/rename` • `/close` • `/add` • `/remove` (or `=rename`, `=close`, `=add`, `=remove`).',
-        'When you are done, use `/close` - the channel is then removed.',
-      ].join('\n'),
+    .setDescription(`Welcome <@${interaction.user.id}>.`)
+    .addFields(
+      { name: 'Username', value: `> ${interaction.user.username}` },
+      { name: 'Purpose', value: '> .' },
     )
-    .setFooter({ text: guild.name })
-    .setTimestamp(Date.now());
+    .setFooter({ text: 'Note: pinging staff can result in a permanent ticket ban' });
+
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(TICKET_CLOSE_BUTTON_ID).setLabel('Close Ticket').setStyle(ButtonStyle.Danger),
+  );
 
   await channel
     .send({
-      embeds: [intro],
-      allowedMentions: { roles: staffRoleId ? [staffRoleId] : [] },
+      content: staffRoleId ? `<@${interaction.user.id}> <@&${staffRoleId}>` : `<@${interaction.user.id}>`,
+      embeds: [welcome],
+      components: [row],
+      allowedMentions: {
+        users: [interaction.user.id],
+        roles: staffRoleId ? [staffRoleId] : [],
+      },
     })
     .catch(() => {});
-
-  const staffPing = staffRoleId ? `<@&${staffRoleId}>` : null;
-  if (staffPing) {
-    await channel.send({ content: staffPing, allowedMentions: { roles: [staffRoleId] } }).catch(() => {});
-  }
 
   return { ticket, channel };
 }

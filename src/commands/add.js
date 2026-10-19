@@ -1,5 +1,5 @@
 import { MessageFlags, SlashCommandBuilder } from 'discord.js';
-import { addToTicket, canManageTicket, getTicketForChannel } from '../services/tickets.js';
+import { addToTicket, getTicketForChannel, isTicketStaff } from '../services/tickets.js';
 import { errorEmbed, successEmbed } from '../utils/embeds.js';
 
 export const data = new SlashCommandBuilder()
@@ -25,9 +25,9 @@ export async function execute(interaction) {
   if (!ticket) {
     return interaction.reply({ embeds: [errorEmbed('This channel is not an open ticket.')], flags: MessageFlags.Ephemeral });
   }
-  if (!canManageTicket(ticket, interaction.member)) {
+  if (!isTicketStaff(interaction.member)) {
     return interaction.reply({
-      embeds: [errorEmbed('Only the ticket owner or staff can add people to this ticket.')],
+      embeds: [errorEmbed('Only ticket staff can add people to this ticket.')],
       flags: MessageFlags.Ephemeral,
     });
   }

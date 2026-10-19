@@ -23,7 +23,7 @@ Discord moderation bot with **role-based mutes**, **warnings + offence count**, 
 | Roles | `/install` creates the whole role stack: **Muted** (above Member, hidden look), **Member**, **Bots** and the visible bot identity role - both below Member with stripped permissions - plus the hidden **Bot Perms** role (`Administrator`). |
 | Bot status | A live **Status Report** card (Components V2) in `botStatusChannelId`: Bot Status (CPU cores/usage, memory, uptime), Environment (Node.js / discord.js / platform / bot version) and Websocket (ping, shards, state). Refreshed every minute. |
 | Server stats | A live **Server Report** card in `serverStatsChannelId`: Members (All / Humans / Bots), Online (live counts - needs the Presence Intent) and Server (Boosts, Channels, Roles, Created date). Optionally keeps a voice channel (`serverStatsVoiceChannelId`) automatically renamed to `All Members: N` (throttled to Discord's 2-renames/10-minutes limit). |
-| Tickets | One-button panel in `tickets.panelChannelId`. Pressing **Open Ticket** creates a text channel in the same category, visible only to the opener and `tickets.staffRoleId`. Inside: `/rename`, `/close [note]` (channel is removed after closing, note is logged to the mod log), `/add user|role`, `/remove user|role`. One open ticket per user; every slash command has a prefix twin (`=rename`, `=close`, `=add`, `=remove`). |
+| Tickets | One-button panel in `tickets.panelChannelId` (basic text, no command list). Pressing **Open Ticket** creates a text channel in the same category, visible only to the opener and `tickets.staffRoleId`. The opener is welcomed with a **Ticket** card (username, purpose placeholder, staff ping, close-note reminder) and a single **Close Ticket** button. `rename` / `add` / `remove` are ticket-staff only; `close` also works for the owner. One open ticket per user. |
 | Install / Uninstall | `/install` checks every configured role/channel, applies the setup and posts/refreshes the setup messages (overwrites existing ones). `/uninstall` deletes those messages again. |
 
 ## Requirements
@@ -234,7 +234,9 @@ Note: inside the muted-commands channel, muted users can run `/history` / `/puni
 - `tickets.panelChannelId` hosts the panel: a Components V2 card ("Tickets") with a **single** `Open Ticket` button - no multi-button panel.
 - The button creates `ticket-<username>` as a **text channel in the same category as the panel**, with overwrites: `@everyone` denied, the opener and `tickets.staffRoleId` allowed (view/write/attach/embed). The bot itself keeps access to manage the channel.
 - One open ticket per user - pressing the button again points to the existing channel.
-- Inside the ticket (owner or staff): `/rename` (auto `ticket-` prefix, sanitized), `/add` and `/remove` for users or roles (the owner cannot be removed), `/close [note]`: marks the row closed, announces it, writes a **Ticket Closed** entry to the mod log (with the note) and deletes the channel a few seconds later.
+- Welcome card in the new channel: `Ticket` (green accent) - "Welcome @user." - `Username` field - `Purpose` field (placeholder) - footer note "pinging staff can result in a permanent ticket ban" - the opener and the staff role are mentioned and the only button is **Close Ticket** (no claim button).
+- Permissions: `rename` / `add` / `remove` are **ticket-staff only**; `close` is owner or staff (also via the button).
+- Inside the ticket (owner or staff): `/rename` (auto `ticket-` prefix, sanitized), `/add` and `/remove` for users or roles, `/close [note]`: marks the row closed, announces it, writes a **Ticket Closed** entry to the mod log (with the note) and deletes the channel a few seconds later.
 - Everything is stored in the `tickets` table (owner, status, who closed, note, timestamps).
 
 ### Bot status channel

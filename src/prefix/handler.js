@@ -30,6 +30,7 @@ import {
   getTicketForChannel,
   removeFromTicket,
   renameTicket,
+  isTicketStaff,
 } from '../services/tickets.js';
 import { formatDuration, parseDuration } from '../utils/duration.js';
 import {
@@ -554,22 +555,26 @@ async function resolveTicketTarget(guild, input) {
   return null;
 }
 
-const ticketGuard = (message) => {
+const ticketGuard = (message, { staffOnly = false } = {}) => {
   const ticket = getTicketForChannel(message.guild.id, message.channelId);
   if (!ticket) {
     message.reply({ embeds: [errorEmbed('This channel is not an open ticket.')] });
     return null;
   }
-  if (!canManageTicket(ticket, message.member)) {
-    message.reply({ embeds: [errorEmbed('Only the ticket owner or staff can do that in this ticket.')] });
+  const allowed = staffOnly ? isTicketStaff(message.member) : canManageTicket(ticket, message.member);
+  if (!allowed) {
+    const text = staffOnly
+      ? 'Only ticket staff can do that in this ticket.'
+      : 'Only the ticket owner or staff can do that in this ticket.';
+    message.reply({ embeds: [errorEmbed(text)] });
     return null;
   }
   return ticket;
 };
 
-// =rename <new name>
+// =rename <new name> (staff only)
 async function renameCommand(message, args) {
-  const ticket = ticketGuard(message);
+  const ticket = ticketGuard(message, { staffOnly: true });
   if (!ticket) return;
 
   const name = args.join(' ').trim();
@@ -593,9 +598,9 @@ async function closeTicketCommand(message, args, client) {
   });
 }
 
-// =add <@user|@role>
+// =add <@user|@role> (staff only)
 async function addTicketCommand(message, args) {
-  const ticket = ticketGuard(message);
+  const ticket = ticketGuard(message, { staffOnly: true });
   if (!ticket) return;
 
   const target = await resolveTicketTarget(message.guild, args[0]);
@@ -613,9 +618,9 @@ async function addTicketCommand(message, args) {
   return message.reply({ embeds: [successEmbed('Access granted.', 'Ticket')] });
 }
 
-// =remove <@user|@role>
+// =remove <@user|@role> (staff only)
 async function removeTicketCommand(message, args) {
-  const ticket = ticketGuard(message);
+  const ticket = ticketGuard(message, { staffOnly: true });
   if (!ticket) return;
 
   const target = await resolveTicketTarget(message.guild, args[0]);
