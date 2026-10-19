@@ -50,6 +50,7 @@ CLIENT_ID=__REDACTED__
 {
   "prefix": "=",                  // prefix for text commands
   "guildId": "123...",            // your server ID (the bot only works here)
+  "botName": "Guildframe",        // display name used in DM notices and panels
   "muteRoleId": "123...",         // Muted role ID (leave empty to auto-create on first mute)
   "muteRoleName": "Muted",        // name used when the bot creates the role
   "modRoleId": "123...",          // role allowed to use moderation commands

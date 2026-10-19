@@ -1,6 +1,7 @@
 {
   "prefix": "=",
   "guildId": "",
+  "botName": "Guildframe",
   "muteRoleId": "",
   "muteRoleName": "Muted",
   "modRoleId": "",

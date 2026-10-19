@@ -342,7 +342,7 @@ export async function inviteVoiceMembers(interaction) {
             `Join: ${link}`,
           ].join('\n'),
         )
-        .setFooter({ text: `Invited via the SENTIA voice panel - ${interaction.guild.name}` });
+        .setFooter({ text: `Invited via the ${config.botName} voice panel - ${interaction.guild.name}` });
       const sent = await user.send({ embeds: [dm], allowedMentions: { users: [] } }).catch(() => null);
       if (!sent) dmFailures.push(userId);
     }

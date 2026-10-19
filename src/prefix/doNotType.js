@@ -68,7 +68,7 @@ export async function handleDoNotType(message, client) {
         fields.push({
           name: 'Notice',
           value: noticed
-            ? 'SENTIA notified the user by DM with the rejoin link.'
+            ? `${config.botName} notified the user by DM with the rejoin link.`
             : 'DM delivery failed - the user could not be notified.',
           inline: true,
         });
