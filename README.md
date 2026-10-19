@@ -18,7 +18,7 @@ Discord moderation bot with **role-based mutes**, **warnings + offence count**, 
 | Mod log | Every bot action (including automatic ones) is logged to `modLogChannelId` as a case embed. |
 | Audit log | Ban / unban / kick / timeout / manual Muted-role changes performed directly in Discord are caught via the audit log and logged with the executor. |
 | Temp ban | `/ban user duration:` or `=ban <user> <duration> [reason]` - unbanned automatically on expiry. |
-| Do-not-type trap | Any message posted in `doNotType.channelId` is logged with a mod-role ping. Optionally auto-`mute` / `kick` / `ban` the author (never applied to real bot accounts - alert only). |
+| Do-not-type trap | Any message posted in `doNotType.channelId` is logged with a mod-role ping. Optionally auto-`mute` / `kick` / `ban` the author (never applied to real bot accounts - alert only). A persistent **⚠️ Warning** sticker with live counter buttons (caught / muted / kicked / banned) is kept in the channel automatically. |
 
 ## Requirements
 
@@ -161,6 +161,13 @@ Targets accept a **user ID**, a **mention** (`<@123...>`) or a **username**.
 - Bot actions -> full case embed in the mod log channel.
 - Out-of-band actions (ban/kick/unban/timeout/manual Muted role changes done in the Discord UI) -> caught via `guildAuditLogEntryCreate` and logged with the executor, tagged `(out of band)`.
 - Do-not-type channel messages -> alert embed with a ping to `modRoleId`, plus the optional automatic action.
+
+### Do-not-type channel
+
+- On startup (and after every catch) the bot posts/updates a **Warning** message in `doNotType.channelId`:
+  `⚠️ Warning ⚠️` + "DO NOT POST MESSAGES IN THIS CHANNEL, you will be {muted/kicked/banned} from {server} if you do so!" + "This channel is used to catch bots that spam our server."
+- Below it, counter buttons track `🐸 caught`, `🔇 muted`, `👢 kicked`, `🔨 banned` (counters persist in the database; action buttons appear once used).
+- Every caught message is logged to the mod log channel with the author, content preview and a jump link.
 
 ## Project structure
 

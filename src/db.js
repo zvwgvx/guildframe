@@ -33,6 +33,19 @@ CREATE TABLE IF NOT EXISTS cases (
 CREATE INDEX IF NOT EXISTS idx_cases_user   ON cases (guild_id, user_id);
 CREATE INDEX IF NOT EXISTS idx_cases_status ON cases (guild_id, status, type);
 CREATE INDEX IF NOT EXISTS idx_cases_temp   ON cases (status, expires_at);
+
+CREATE TABLE IF NOT EXISTS trap_stats (
+  guild_id TEXT NOT NULL,
+  key      TEXT NOT NULL,
+  count    INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (guild_id, key)
+);
+
+CREATE TABLE IF NOT EXISTS trap_message (
+  guild_id   TEXT PRIMARY KEY,
+  channel_id TEXT NOT NULL,
+  message_id TEXT NOT NULL
+);
 `);
 
 // Migration from the initial schema (active flag -> status, offence numbering).
@@ -183,3 +196,27 @@ export const topOffenders = (guildId, limit = 10) =>
        LIMIT ?`,
     )
     .all(guildId, limit);
+
+// ---------- Do-not-type trap ----------
+
+export function bumpTrapStat(guildId, key) {
+  db.prepare(
+    `INSERT INTO trap_stats (guild_id, key, count) VALUES (?, ?, 1)
+     ON CONFLICT (guild_id, key) DO UPDATE SET count = count + 1`,
+  ).run(guildId, key);
+}
+
+export function getTrapStats(guildId) {
+  const rows = db.prepare('SELECT key, count FROM trap_stats WHERE guild_id = ?').all(guildId);
+  return Object.fromEntries(rows.map((r) => [r.key, Number(r.count)]));
+}
+
+export const getTrapMessageRow = (guildId) =>
+  db.prepare('SELECT * FROM trap_message WHERE guild_id = ?').get(guildId) ?? null;
+
+export function setTrapMessageRow(guildId, channelId, messageId) {
+  db.prepare(
+    `INSERT INTO trap_message (guild_id, channel_id, message_id) VALUES (?, ?, ?)
+     ON CONFLICT (guild_id) DO UPDATE SET channel_id = excluded.channel_id, message_id = excluded.message_id`,
+  ).run(guildId, channelId, messageId);
+}

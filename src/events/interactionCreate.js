@@ -5,15 +5,26 @@ import { isConfiguredGuild } from '../utils/permissions.js';
 export const name = Events.InteractionCreate;
 
 export async function execute(interaction, client) {
-  if (!interaction.isChatInputCommand()) return;
-
   if (!interaction.inGuild() || !isConfiguredGuild(interaction.guildId)) {
-    await interaction.reply({
-      content: 'This bot is not configured for this server.',
-      flags: MessageFlags.Ephemeral,
-    });
+    if (interaction.isRepliable()) {
+      await interaction.reply({
+        content: 'This bot is not configured for this server.',
+        flags: MessageFlags.Ephemeral,
+      });
+    }
     return;
   }
+
+  // Display-only counter buttons on the do-not-type warning message.
+  if (interaction.isButton() && interaction.customId.startsWith('trap_stat_')) {
+    const key = interaction.customId.replace('trap_stat_', '');
+    await interaction
+      .reply({ content: `This is just a counter (${key}). 😉`, flags: MessageFlags.Ephemeral })
+      .catch(() => {});
+    return;
+  }
+
+  if (!interaction.isChatInputCommand()) return;
 
   const command = client.commands.get(interaction.commandName);
   if (!command) return;

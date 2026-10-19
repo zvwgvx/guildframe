@@ -1,9 +1,10 @@
 import { config } from '../config.js';
 import { COLORS } from '../constants.js';
-import { buildActionEmbed, buildAuditEmbed } from '../utils/embeds.js';
+import { createCase, hideCase } from '../db.js';
 import { applyMute } from '../services/mutes.js';
 import { logCase, sendModLog } from '../services/log.js';
-import { createCase, hideCase } from '../db.js';
+import { onTrapCaught } from '../services/trap.js';
+import { buildAuditEmbed } from '../utils/embeds.js';
 
 // Handles messages posted in the "do not type" channel (used to catch bots/selfbots).
 // config.doNotType.action: "alert" (default) | "mute" | "kick" | "ban".
@@ -31,7 +32,7 @@ export async function handleDoNotType(message, client) {
       if (action === 'mute' && member) {
         const { caseRow } = await applyMute(guild, member, {
           moderatorId: client.user.id,
-          reason: `Posted in the do-not-type channel`,
+          reason: 'Posted in the do-not-type channel',
           durationMs: null,
           clientId: client.user.id,
         });
@@ -84,17 +85,6 @@ export async function handleDoNotType(message, client) {
     { content },
   );
 
-  // Acknowledge in the channel so it is obvious the alert was caught.
-  await message
-    .reply({
-      embeds: [
-        buildActionEmbed({
-          action: action === 'alert' ? 'alert' : action,
-          target: message.author,
-          reason: 'Posted in the do-not-type channel',
-          guildName: guild.name,
-        }),
-      ],
-    })
-    .catch(() => {});
+  // Update the persistent warning message counters.
+  await onTrapCaught(message, action, client);
 }
