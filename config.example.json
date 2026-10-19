@@ -21,6 +21,9 @@
     "panelChannelId": "",
     "staffRoleId": ""
   },
+  "createVoice": {
+    "lobbyChannelId": ""
+  },
   "doNotType": {
     "channelId": "",
     "action": "kick",

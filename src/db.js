@@ -63,6 +63,18 @@ CREATE TABLE IF NOT EXISTS tickets (
 
 CREATE INDEX IF NOT EXISTS idx_tickets_guild  ON tickets (guild_id, status, owner_id);
 CREATE INDEX IF NOT EXISTS idx_tickets_channel ON tickets (channel_id);
+
+CREATE TABLE IF NOT EXISTS voice_channels (
+  id               INTEGER PRIMARY KEY AUTOINCREMENT,
+  guild_id         TEXT NOT NULL,
+  channel_id       TEXT NOT NULL,
+  owner_id         TEXT NOT NULL,
+  panel_message_id TEXT,
+  created_at       INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_voice_guild   ON voice_channels (guild_id, owner_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_voice_channel ON voice_channels (channel_id);
 `);
 
 // Migration from the initial schema (active flag -> status, offence numbering).
@@ -281,3 +293,31 @@ export function closeTicketRow(id, { closedBy, note = null }) {
   ).run(closedBy, note, Date.now(), id);
   return db.prepare('SELECT * FROM tickets WHERE id = ?').get(id) ?? null;
 }
+
+// ---------- Dynamic voice channels (create-voice) ----------
+
+export function createVoiceRow({ guildId, channelId, ownerId, createdAt = Date.now() }) {
+  db.prepare(
+    'INSERT INTO voice_channels (guild_id, channel_id, owner_id, created_at) VALUES (?, ?, ?, ?)',
+  ).run(guildId, channelId, ownerId, createdAt);
+  return db.prepare('SELECT * FROM voice_channels WHERE channel_id = ?').get(channelId);
+}
+
+export const getVoiceRowByChannel = (guildId, channelId) =>
+  db.prepare('SELECT * FROM voice_channels WHERE guild_id = ? AND channel_id = ?').get(guildId, channelId) ?? null;
+
+export const getVoiceRowByOwner = (guildId, userId) =>
+  db.prepare('SELECT * FROM voice_channels WHERE guild_id = ? AND owner_id = ? ORDER BY id DESC').get(guildId, userId) ?? null;
+
+export const setVoicePanelMessage = (id, messageId) =>
+  db.prepare('UPDATE voice_channels SET panel_message_id = ? WHERE id = ?').run(messageId, id);
+
+export const deleteVoiceRow = (guildId, channelId) =>
+  Number(
+    db.prepare('DELETE FROM voice_channels WHERE guild_id = ? AND channel_id = ?').run(guildId, channelId).changes,
+  );
+
+export const setVoiceOwner = (guildId, channelId, ownerId) =>
+  db
+    .prepare('UPDATE voice_channels SET owner_id = ? WHERE guild_id = ? AND channel_id = ?')
+    .run(ownerId, guildId, channelId);

@@ -411,7 +411,35 @@ export async function runInstall(client, guild, { installerId = null } = {}) {
     }
   }
 
-  // 11. Channel restrictions everywhere else
+  // 11. Create-voice lobby (joining spawns a personal voice channel)
+  if (!config.createVoice?.lobbyChannelId) {
+    results.push({
+      label: 'Create-voice lobby',
+      status: 'Not set',
+      detail: 'Add `createVoice.lobbyChannelId` (a voice channel users join to spawn their own).',
+    });
+  } else {
+    try {
+      const lobby = await guild.channels.fetch(config.createVoice.lobbyChannelId).catch(() => null);
+      if (!lobby || !lobby.isVoiceBased()) {
+        results.push({
+          label: 'Create-voice lobby',
+          status: 'Failed',
+          detail: 'Channel not found or not a voice channel. Check `createVoice.lobbyChannelId`.',
+        });
+      } else {
+        results.push({
+          label: 'Create-voice lobby',
+          status: 'OK',
+          detail: `<#${lobby.id}> - joining spawns a personal voice channel in the same category, with a settings panel in its text chat (privacy, user limit, invite). Empty channels are deleted automatically.`,
+        });
+      }
+    } catch (err) {
+      results.push({ label: 'Create-voice lobby', status: 'Failed', detail: err.message });
+    }
+  }
+
+  // 12. Channel restrictions everywhere else
   if (muteRole) {
     try {
       const { ok, failed } = await applyMuteOverwritesAll(guild, muteRole);
@@ -427,7 +455,7 @@ export async function runInstall(client, guild, { installerId = null } = {}) {
     }
   }
 
-  // 11. Best-effort ordering (top to bottom): muted > member > bots > bot (visible) > perms (hidden).
+  // 12. Best-effort ordering (top to bottom): muted > member > bots > bot (visible) > perms (hidden).
   // With Administrator the bot ignores role positions, so the perms role can rest at the very bottom.
   if (permsRole && memberRole && botsRole && botRole && muteRole) {
     const desired = [muteRole, memberRole, botsRole, botRole, permsRole];

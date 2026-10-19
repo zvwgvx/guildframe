@@ -21,6 +21,9 @@
     "panelChannelId": "1544252428629844069",
     "staffRoleId": "1561692231109443594"
   },
+  "createVoice": {
+    "lobbyChannelId": ""
+  },
   "doNotType": {
     "channelId": "1561667318046662766",
     "action": "kick",

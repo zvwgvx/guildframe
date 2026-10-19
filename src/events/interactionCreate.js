@@ -3,6 +3,7 @@ import { config } from '../config.js';
 import { errorEmbed, successEmbed } from '../utils/embeds.js';
 import { isConfiguredGuild } from '../utils/permissions.js';
 import { TICKET_BUTTON_ID, TICKET_CLOSE_BUTTON_ID, canManageTicket, closeTicket, getTicketForChannel, openTicket } from '../services/tickets.js';
+import { CV_INVITE_ID, CV_LIMIT_ID, CV_PRIVACY_ID, inviteVoiceMembers, setVoiceLimit, toggleVoicePrivacy } from '../services/createvoice.js';
 
 export const name = Events.InteractionCreate;
 
@@ -55,6 +56,37 @@ export async function execute(interaction, client) {
     });
     const embed = result?.error ? errorEmbed(result.error) : successEmbed('Ticket closed. This channel will be removed shortly.');
     await interaction.editReply({ embeds: [embed] }).catch(() => {});
+    return;
+  }
+
+  // Create-voice panel actions inside a spawned voice channel.
+  if (interaction.isButton() && interaction.customId === CV_PRIVACY_ID) {
+    const result = await toggleVoicePrivacy(interaction).catch((err) => {
+      console.error('[voice] Privacy toggle failed:', err.message);
+      return { error: 'Could not change the privacy. Try again in a moment.' };
+    });
+    const embed = result?.error ? errorEmbed(result.error) : successEmbed(result.success);
+    await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral }).catch(() => {});
+    return;
+  }
+
+  if (interaction.isStringSelectMenu() && interaction.customId === CV_LIMIT_ID) {
+    const result = await setVoiceLimit(interaction).catch((err) => {
+      console.error('[voice] Limit change failed:', err.message);
+      return { error: 'Could not set the user limit. Try again in a moment.' };
+    });
+    const embed = result?.error ? errorEmbed(result.error) : successEmbed(result.success);
+    await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral }).catch(() => {});
+    return;
+  }
+
+  if (interaction.isUserSelectMenu() && interaction.customId === CV_INVITE_ID) {
+    const result = await inviteVoiceMembers(interaction).catch((err) => {
+      console.error('[voice] Invite failed:', err.message);
+      return { error: 'Could not invite members. Try again in a moment.' };
+    });
+    const embed = result?.error ? errorEmbed(result.error) : successEmbed(result.success);
+    await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral }).catch(() => {});
     return;
   }
 

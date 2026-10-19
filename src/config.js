@@ -25,6 +25,7 @@ const DEFAULT_FILE_CONFIG = {
   serverStatsChannelId: '',
   serverStatsVoiceChannelId: '',
   tickets: { panelChannelId: '', staffRoleId: '' },
+  createVoice: { lobbyChannelId: '' },
   doNotType: { channelId: '', action: 'kick', purgeMinutes: 30 },
   warnEscalation: { threshold: 0, duration: '1h' },
 };
@@ -32,7 +33,7 @@ const DEFAULT_FILE_CONFIG = {
 function loadFileConfig() {
   try {
     const raw = JSON.parse(readFileSync(CONFIG_PATH, 'utf8'));
-    return { ...DEFAULT_FILE_CONFIG, ...raw, doNotType: { ...DEFAULT_FILE_CONFIG.doNotType, ...raw.doNotType }, warnEscalation: { ...DEFAULT_FILE_CONFIG.warnEscalation, ...raw.warnEscalation }, tickets: { ...DEFAULT_FILE_CONFIG.tickets, ...raw.tickets } };
+    return { ...DEFAULT_FILE_CONFIG, ...raw, doNotType: { ...DEFAULT_FILE_CONFIG.doNotType, ...raw.doNotType }, warnEscalation: { ...DEFAULT_FILE_CONFIG.warnEscalation, ...raw.warnEscalation }, tickets: { ...DEFAULT_FILE_CONFIG.tickets, ...raw.tickets }, createVoice: { ...DEFAULT_FILE_CONFIG.createVoice, ...raw.createVoice } };
   } catch (err) {
     if (err.code === 'ENOENT') {
       console.warn('[config] config.json not found, falling back to defaults. Copy config.example.json to config.json.');
